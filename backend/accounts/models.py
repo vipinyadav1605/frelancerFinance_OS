@@ -59,3 +59,21 @@ class NotificationPreference(models.Model):
 
     def __str__(self):
         return f"NotificationPreference({self.user.email})"
+
+
+class TwoFactorAuth(models.Model):
+    """
+    TOTP-based 2FA. `secret` is generated at /2fa/setup/ time but `is_enabled`
+    stays False until the user proves they've actually added it to an
+    authenticator app by submitting one valid code to /2fa/enable/ - this
+    avoids a user getting locked out from a setup that never actually landed
+    in their app (e.g. they closed the tab before scanning the QR code).
+    """
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="two_factor_auth")
+    secret = models.CharField(max_length=32)
+    is_enabled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"TwoFactorAuth({self.user.email}, enabled={self.is_enabled})"

@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { register } from "../api/endpoints";
+import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { useAuth } from "../context/AuthContext";
 import { extractErrorMessage } from "../utils/errors";
 
@@ -49,6 +50,9 @@ export function RegisterPage() {
         <button className="btn btn-primary" type="submit" disabled={submitting}>
           {submitting ? "Creating account..." : "Sign up"}
         </button>
+
+        <div className="page-subtitle" style={{ textAlign: "center" }}>or</div>
+        <GoogleSignInButton />
 
         <p className="auth-switch">
           Already have an account? <Link to="/login">Log in</Link>

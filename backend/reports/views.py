@@ -13,6 +13,7 @@ from .serializers import (
 )
 from .services.export import export_gstr1_csv, export_profit_loss_csv, export_profit_loss_pdf
 from .services.gstr1 import compute_gstr1_prefill
+from .services.insights import expense_breakdown_by_category, monthly_revenue_trend, top_clients_by_revenue
 from .services.profit_loss import compute_profit_loss
 
 
@@ -94,6 +95,22 @@ class Gstr1ExportView(APIView):
         response = HttpResponse(content, content_type="text/csv")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
+
+
+class DashboardInsightsView(APIView):
+    """Chart data for the Dashboard: revenue trend, expense breakdown, top clients."""
+
+    def get(self, request):
+        query = PeriodQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+        period_start = query.validated_data["period_start"]
+        period_end = query.validated_data["period_end"]
+
+        return Response({
+            "monthly_revenue_trend": monthly_revenue_trend(request.user),
+            "expense_breakdown": expense_breakdown_by_category(request.user, period_start, period_end),
+            "top_clients": top_clients_by_revenue(request.user, period_start, period_end),
+        })
 
 
 class ReportShareLinkViewSet(viewsets.ModelViewSet):

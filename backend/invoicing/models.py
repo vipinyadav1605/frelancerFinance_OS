@@ -1,7 +1,13 @@
+import secrets
+
 from django.conf import settings
 from django.db import models
 
 from clients.models import Client
+
+
+def _generate_public_view_token():
+    return secrets.token_urlsafe(24)
 
 
 class TaxType(models.TextChoices):
@@ -61,6 +67,14 @@ class Invoice(models.Model):
     payment_link_url = models.URLField(blank=True)
     razorpay_payment_link_id = models.CharField(max_length=64, blank=True)
 
+    # Lets a client view (and pay) this one invoice without an account -
+    # permanent, unlike ReportShareLink's expiring links, since it's meant to
+    # be the durable "your invoice" link a client can bookmark or reopen from
+    # the emailed PDF.
+    public_view_token = models.CharField(
+        max_length=64, unique=True, default=_generate_public_view_token, editable=False,
+    )
+
     sent_at = models.DateTimeField(null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     last_reminder_sent_at = models.DateTimeField(null=True, blank=True)
@@ -69,6 +83,10 @@ class Invoice(models.Model):
 
     class Meta:
         ordering = ["-issue_date", "-id"]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["user", "issue_date"]),
+        ]
 
     def __str__(self):
         return self.invoice_number

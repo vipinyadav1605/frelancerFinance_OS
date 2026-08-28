@@ -2,19 +2,23 @@ import json
 import logging
 
 from django.core.files.base import ContentFile
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from billing.models import Subscription, SubscriptionStatus
+from billing.services.limits import can_create_invoice
+from config.pagination import StandardResultsPagination
 from integrations.services.webhooks import send_webhook_event
 from notifications.services import notify
 
 from .models import Invoice, InvoiceStatus, Payment, PaymentMethod, PaymentStatus, RecurringInvoiceProfile
 from .serializers import (
     ExchangeRateQuerySerializer, InvoiceCreateSerializer, InvoiceDetailSerializer,
-    InvoiceListSerializer, MarkPaidSerializer, RecurringInvoiceProfileSerializer,
+    InvoiceListSerializer, MarkPaidSerializer, PublicInvoiceSerializer, RecurringInvoiceProfileSerializer,
 )
 from .services.exchange_rates import fetch_exchange_rate_to_inr
 from .services.invoices import create_invoice
@@ -23,6 +27,27 @@ from .services.payments import create_payment_link, verify_webhook_signature
 from .services.pdf import generate_invoice_pdf
 
 logger = logging.getLogger(__name__)
+
+
+SUBSCRIPTION_STATUS_BY_EVENT = {
+    "subscription.activated": SubscriptionStatus.ACTIVE,
+    "subscription.charged": SubscriptionStatus.ACTIVE,
+    "subscription.halted": SubscriptionStatus.PAST_DUE,
+    "subscription.cancelled": SubscriptionStatus.CANCELLED,
+    "subscription.completed": SubscriptionStatus.CANCELLED,
+}
+
+
+def _handle_subscription_event(payload, new_status):
+    entity = payload["payload"]["subscription"]["entity"]
+    fields = {"status": new_status}
+    if entity.get("current_end"):
+        fields["current_period_end"] = timezone.make_aware(
+            timezone.datetime.fromtimestamp(entity["current_end"])
+        )
+    updated = Subscription.objects.filter(razorpay_subscription_id=entity["id"]).update(**fields)
+    if not updated:
+        logger.warning("Webhook for unknown Razorpay subscription id %s", entity["id"])
 
 
 def _invoice_webhook_payload(invoice):
@@ -39,6 +64,7 @@ def _invoice_webhook_payload(invoice):
 
 class InvoiceViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "head", "options"]
+    pagination_class = StandardResultsPagination
 
     def get_queryset(self):
         qs = Invoice.objects.filter(user=self.request.user)
@@ -58,6 +84,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         return InvoiceDetailSerializer
 
     def create(self, request, *args, **kwargs):
+        if not can_create_invoice(request.user):
+            return Response(
+                {
+                    "detail": "You've reached the free plan's monthly invoice limit. Upgrade to Pro for unlimited invoices.",
+                    "upgrade_required": True,
+                },
+                status=status.HTTP_402_PAYMENT_REQUIRED,
+            )
+
         serializer = self.get_serializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
@@ -123,6 +158,17 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         pdf_bytes = generate_invoice_pdf(invoice)
         invoice.pdf_file.save(f"{invoice.invoice_number}.pdf", ContentFile(pdf_bytes), save=True)
         return Response(InvoiceDetailSerializer(invoice, context={"request": request}).data)
+
+
+class PublicInvoiceView(APIView):
+    """No-login client-facing invoice view/pay page (Settings note: permanent, unlike ReportShareLink)."""
+
+    permission_classes = [permissions.AllowAny]
+    authentication_classes = []
+
+    def get(self, request, token):
+        invoice = get_object_or_404(Invoice, public_view_token=token)
+        return Response(PublicInvoiceSerializer(invoice, context={"request": request}).data)
 
 
 class RecurringInvoiceProfileViewSet(viewsets.ModelViewSet):
@@ -200,5 +246,8 @@ class RazorpayWebhookView(APIView):
                     invoice.user, "invoice_paid", f"Invoice {invoice.invoice_number} was paid via Razorpay.",
                     link_path=f"/invoices/{invoice.id}",
                 )
+
+        elif event in SUBSCRIPTION_STATUS_BY_EVENT:
+            _handle_subscription_event(payload, SUBSCRIPTION_STATUS_BY_EVENT[event])
 
         return Response({"status": "ok"})

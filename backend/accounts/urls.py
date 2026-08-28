@@ -3,14 +3,16 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     BusinessProfileView, ChangeEmailView, ChangePasswordView, DataExportView,
-    DeleteAccountView, LogoutView, MeView, NotificationPreferenceView,
-    OnboardingStatusView, PasswordResetConfirmView, PasswordResetRequestView,
-    RegisterView, ThrottledTokenObtainPairView,
+    DeleteAccountView, GoogleLoginView, LogoutView, MeView, NotificationPreferenceView,
+    OnboardingStatusView, PasswordResetConfirmView, PasswordResetRequestView, RegisterView,
+    ThrottledTokenObtainPairView, TwoFactorConfirmView, TwoFactorDisableView, TwoFactorSetupView,
+    TwoFactorStatusView,
 )
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="auth-register"),
     path("login/", ThrottledTokenObtainPairView.as_view(), name="auth-login"),
+    path("google/", GoogleLoginView.as_view(), name="auth-google"),
     path("refresh/", TokenRefreshView.as_view(), name="auth-refresh"),
     path("logout/", LogoutView.as_view(), name="auth-logout"),
     path("password-reset/", PasswordResetRequestView.as_view(), name="auth-password-reset"),
@@ -21,6 +23,10 @@ urlpatterns = [
     path("notification-preference/", NotificationPreferenceView.as_view(), name="notification-preference"),
     path("onboarding-status/", OnboardingStatusView.as_view(), name="onboarding-status"),
     path("data-export/", DataExportView.as_view(), name="data-export"),
+    path("2fa/status/", TwoFactorStatusView.as_view(), name="2fa-status"),
+    path("2fa/setup/", TwoFactorSetupView.as_view(), name="2fa-setup"),
+    path("2fa/confirm/", TwoFactorConfirmView.as_view(), name="2fa-confirm"),
+    path("2fa/disable/", TwoFactorDisableView.as_view(), name="2fa-disable"),
     path("me/", MeView.as_view(), name="auth-me"),
     path("business-profile/", BusinessProfileView.as_view(), name="business-profile"),
 ]

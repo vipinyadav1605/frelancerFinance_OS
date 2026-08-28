@@ -78,7 +78,36 @@ class InvoiceDetailSerializer(serializers.ModelSerializer):
             "issue_date", "due_date", "currency", "exchange_rate_to_inr", "tax_type",
             "lut_reference", "subtotal", "cgst_amount", "sgst_amount", "igst_amount",
             "total_amount", "status", "payment_link_url", "pdf_url", "sent_at", "paid_at",
-            "created_at", "items", "payments",
+            "created_at", "items", "payments", "public_view_token",
+        ]
+
+    def get_pdf_url(self, obj):
+        request = self.context.get("request")
+        if obj.pdf_file and request:
+            return request.build_absolute_uri(obj.pdf_file.url)
+        return None
+
+
+class PublicInvoiceSerializer(serializers.ModelSerializer):
+    """
+    For the no-login client-facing view (invoicing/views.py::PublicInvoiceView).
+    Deliberately excludes internal ids and the owner's account-level fields -
+    only what a client legitimately needs to review and pay their own invoice.
+    """
+
+    items = InvoiceItemSerializer(many=True, read_only=True)
+    business_name = serializers.CharField(source="user.business_profile.business_name", read_only=True)
+    business_gstin = serializers.CharField(source="user.business_profile.gstin", read_only=True)
+    pdf_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Invoice
+        fields = [
+            "invoice_number", "business_name", "business_gstin", "client_name_snapshot",
+            "client_address_snapshot", "client_country_snapshot", "client_gstin_snapshot",
+            "issue_date", "due_date", "currency", "tax_type", "lut_reference", "subtotal",
+            "cgst_amount", "sgst_amount", "igst_amount", "total_amount", "status",
+            "payment_link_url", "pdf_url", "items",
         ]
 
     def get_pdf_url(self, obj):

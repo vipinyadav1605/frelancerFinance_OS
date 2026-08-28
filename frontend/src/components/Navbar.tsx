@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { GlobalSearch } from "./GlobalSearch";
 import { NotificationBell } from "./NotificationBell";
 
 export function Navbar() {
@@ -25,6 +26,7 @@ export function Navbar() {
         <Link to="/settings">Settings</Link>
       </div>
       <div className="navbar-user">
+        <GlobalSearch />
         <NotificationBell />
         <span>{user.email}</span>
         <button className="btn btn-link" onClick={handleLogout}>Log out</button>

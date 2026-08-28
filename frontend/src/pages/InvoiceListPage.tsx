@@ -24,6 +24,10 @@ function currencyAmount(amount: string, currency: string) {
 
 export function InvoiceListPage() {
   const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
+  const [count, setCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  const [page, setPage] = useState(1);
   const [status, setStatus] = useState<InvoiceStatus | "">("");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -31,13 +35,25 @@ export function InvoiceListPage() {
 
   function load() {
     setLoading(true);
-    listInvoices(status ? { status } : {}).then(setInvoices).finally(() => setLoading(false));
+    listInvoices({ ...(status ? { status } : {}), page })
+      .then((data) => {
+        setInvoices(data.results);
+        setCount(data.count);
+        setHasNext(data.next !== null);
+        setHasPrevious(data.previous !== null);
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(() => {
     setSelected(new Set());
     load();
-  }, [status]);
+  }, [status, page]);
+
+  function selectStatus(value: InvoiceStatus | "") {
+    setStatus(value);
+    setPage(1);
+  }
 
   const markableSelected = invoices.filter(
     (inv) => selected.has(inv.id) && MARKABLE_STATUSES.includes(inv.status)
@@ -88,7 +104,7 @@ export function InvoiceListPage() {
           <button
             key={opt.value}
             className={`filter-chip ${status === opt.value ? "filter-chip-active" : ""}`}
-            onClick={() => setStatus(opt.value)}
+            onClick={() => selectStatus(opt.value)}
           >
             {opt.label}
           </button>
@@ -143,6 +159,17 @@ export function InvoiceListPage() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {!loading && count > 0 && (
+        <div className="filter-bar" style={{ justifyContent: "space-between", marginTop: "1rem" }}>
+          <span className="page-subtitle">{count} invoice{count === 1 ? "" : "s"} total</span>
+          <div className="form-actions">
+            <button className="btn btn-secondary" disabled={!hasPrevious} onClick={() => setPage((p) => p - 1)}>Previous</button>
+            <span className="page-subtitle" style={{ alignSelf: "center" }}>Page {page}</span>
+            <button className="btn btn-secondary" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>Next</button>
+          </div>
+        </div>
       )}
     </div>
   );

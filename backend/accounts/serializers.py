@@ -1,7 +1,9 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from .models import BusinessProfile, NotificationPreference, User
+from .services.two_factor import verify_code
 from .validators import validate_gstin_format, validate_pan_format
 
 
@@ -103,3 +105,48 @@ class OnboardingStatusSerializer(serializers.Serializer):
     has_client = serializers.BooleanField()
     has_invoice = serializers.BooleanField()
     has_sent_invoice = serializers.BooleanField()
+
+
+class GoogleLoginSerializer(serializers.Serializer):
+    id_token = serializers.CharField()
+
+
+class TwoFactorConfirmSetupSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=6, min_length=6)
+
+
+class TwoFactorDisableSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+
+    def validate_current_password(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+
+class TwoFactorTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Extends the standard email+password login to also require a TOTP code
+    when the user has 2FA enabled. Single request, not a two-step token
+    exchange: the frontend submits email+password first; if the response
+    comes back with `two_factor_required: true` it re-submits the same
+    request with `otp_code` filled in (see accounts/views.py's
+    ThrottledTokenObtainPairView docstring for why this shape was chosen).
+    """
+
+    otp_code = serializers.CharField(required=False, allow_blank=True, write_only=True)
+
+    def validate(self, attrs):
+        otp_code = attrs.pop("otp_code", "")
+        data = super().validate(attrs)
+
+        tfa = getattr(self.user, "two_factor_auth", None)
+        if tfa is not None and tfa.is_enabled:
+            if not otp_code:
+                raise serializers.ValidationError({
+                    "detail": "Two-factor authentication code required.",
+                    "two_factor_required": True,
+                })
+            if not verify_code(self.user, otp_code):
+                raise serializers.ValidationError({"otp_code": "Invalid or expired code."})
+        return data

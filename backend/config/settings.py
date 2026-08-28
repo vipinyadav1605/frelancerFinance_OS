@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     "reports",
     "integrations",
     "notifications",
+    "search",
+    "billing",
 ]
 
 MIDDLEWARE = [
@@ -174,6 +176,18 @@ RAZORPAY_WEBHOOK_SECRET = env("RAZORPAY_WEBHOOK_SECRET", default="")
 
 # Frontend base URL, used when building links inside emails.
 FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:5173")
+
+# --- Google Sign-In --------------------------------------------------------
+# Create this in Google Cloud Console > APIs & Services > Credentials >
+# "OAuth 2.0 Client IDs" (Web application type). Until it's set, the
+# /auth/google/ endpoint responds with a clear "not configured" error rather
+# than accepting tokens it can't actually verify.
+GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
+
+# --- Razorpay Subscriptions (billing) --------------------------------------
+# Create these plans in the Razorpay Dashboard > Subscriptions > Plans first
+# (Free tier needs no plan - it's enforced entirely in this app's own code).
+RAZORPAY_PRO_MONTHLY_PLAN_ID = env("RAZORPAY_PRO_MONTHLY_PLAN_ID", default="")
 
 # --- Production security headers -------------------------------------------
 # Only applied when DEBUG=False, since most of these break local HTTP dev

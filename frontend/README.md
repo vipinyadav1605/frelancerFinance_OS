@@ -16,6 +16,10 @@ App runs at `http://localhost:5173`. The backend must be running at the URL in
 `VITE_API_BASE_URL` (see `../backend/README.md`) — including CORS: the backend's
 `CORS_ALLOWED_ORIGINS` must include `http://localhost:5173`.
 
+`VITE_GOOGLE_CLIENT_ID` is optional - leave it blank to hide the "Sign in with
+Google" button entirely (see `.env.example` for where to get one; it must
+match the backend's `GOOGLE_OAUTH_CLIENT_ID`).
+
 ## Pages
 
 | Route | Purpose |
@@ -32,7 +36,8 @@ App runs at `http://localhost:5173`. The backend must be running at the URL in
 | `/recurring-invoices` | Phase 4: manage recurring invoice templates (weekly/monthly/quarterly, optional auto-send) |
 | `/integrations` | Phase 5: manage API keys and outgoing webhook subscriptions |
 | `/shared/:token` | Phase 5: public, no-login read-only report view (for a CA/collaborator) |
-| `/settings` | Consolidated hub (tabs: Profile, Business, Security, Notifications, Integrations, Danger Zone) - reuses `BusinessProfilePage`/`IntegrationsPage` as tab content rather than duplicating them. `/business-profile` and `/integrations` still work standalone. |
+| `/settings` | Consolidated hub (tabs: Profile, Business, Security, Notifications, Integrations, Billing, Danger Zone) - reuses `BusinessProfilePage`/`IntegrationsPage` as tab content rather than duplicating them. `/business-profile` and `/integrations` still work standalone. |
+| `/pay/:token` | Public, no-login client-facing invoice view/pay page (permanent link, from `Invoice.public_view_token`) |
 
 ## Notes
 
@@ -63,3 +68,21 @@ App runs at `http://localhost:5173`. The backend must be running at the URL in
   list, multi-select + "delete selected" on the expense list. Implemented as
   parallel calls to the existing single-item endpoints (`Promise.all`), not
   new bulk-specific backend endpoints - fine at solo-freelancer data volumes.
+- **Pagination**: `/invoices` and `/expenses` now request/render a page at a
+  time (`Previous`/`Next`, 25/page) - `listInvoices()`/`listExpenses()` return
+  a `Paginated<T>` envelope (`{count, next, previous, results}`), not a plain
+  array. Any new code reading these must use `.results`.
+- **Global search** (`components/GlobalSearch.tsx`, in the Navbar) debounces
+  (250ms) queries to `/search/` across invoices and clients.
+- **Dashboard charts** (`components/DashboardCharts.tsx`, via `recharts`) are
+  lazy-loaded with `React.lazy`/`Suspense` - recharts is ~110KB gzipped and
+  only the Dashboard needs it, so it ships as its own chunk rather than
+  bloating every page's initial load.
+- **2FA login flow** is a single request either way: submit email+password;
+  if the backend responds with `two_factor_required`, reveal an OTP field and
+  resubmit with `otp_code` added (`pages/LoginPage.tsx`). Note: check that
+  field for *truthiness*, not `=== true` - DRF's `ValidationError` coerces
+  dict values into string-wrapped arrays (`["True"]`), not a bare boolean.
+- **Google Sign-In** (`components/GoogleSignInButton.tsx`) loads Google's
+  Identity Services script on demand and renders nothing if
+  `VITE_GOOGLE_CLIENT_ID` isn't set - safe to leave unconfigured.

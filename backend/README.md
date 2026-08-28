@@ -114,6 +114,19 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
 | `/api/notifications/unread-count/` | GET | for the bell icon's badge |
 | `/api/notifications/{id}/mark-read/` | POST | mark one notification read |
 | `/api/notifications/mark-all-read/` | POST | mark all notifications read |
+| `/api/invoices/` | GET | now paginated (`?page=&page_size=`, default 25/page, max 100) - see Performance |
+| `/api/expenses/` | GET | now paginated, same scheme as invoices |
+| `/api/public/invoice/{token}/` | GET | public (no auth) client-facing invoice view/pay page |
+| `/api/search/` | GET | global search across invoices + clients (`?q=`, min 2 chars) |
+| `/api/reports/insights/` | GET | Dashboard chart data: revenue trend, expense breakdown, top clients |
+| `/api/auth/google/` | POST | Google Sign-In: `{"id_token": "..."}` from Google Identity Services |
+| `/api/auth/2fa/status/` | GET | is 2FA enabled for the current user |
+| `/api/auth/2fa/setup/` | POST | generates a pending TOTP secret + QR code |
+| `/api/auth/2fa/confirm/` | POST | `{"code"}` - proves the code works, enables 2FA |
+| `/api/auth/2fa/disable/` | POST | `{"current_password"}` |
+| `/api/billing/status/` | GET | current plan + this month's invoice usage |
+| `/api/billing/subscribe/` | POST | starts a Razorpay-hosted Pro subscription checkout |
+| `/api/billing/cancel/` | POST | cancels the active Pro subscription |
 
 ## Security
 
@@ -145,6 +158,22 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
   `"test" in sys.argv`) - only affects `manage.py test`, never runtime. Real
   PBKDF2 hashing in every `create_user()`/login() call was costing minutes of
   test suite time for zero benefit against a throwaway test DB.
+- **Two-factor authentication (TOTP)**: `accounts/models.py::TwoFactorAuth`.
+  A generated secret stays `is_enabled=False` until the user proves it works
+  by submitting one real code to `/2fa/confirm/` - this stops someone getting
+  locked out from a setup that never actually landed in their authenticator
+  app. Login is a single request either way: submit email+password, and if
+  the response has `two_factor_required` (note: DRF's `ValidationError`
+  coerces every dict value into a string-wrapped array - the frontend must
+  check *truthiness*, not `=== true`), resubmit with `otp_code` added.
+- **Google Sign-In**: verifies a Google ID token server-side
+  (`accounts/services/google_auth.py`) and issues this app's own JWT pair -
+  never trusts the frontend's claim about who signed in. Needs
+  `GOOGLE_OAUTH_CLIENT_ID` set to a real OAuth Client ID from
+  [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
+  (created under your own Google account/project - this app can't create one
+  for you). Until then, `/auth/google/` returns a clear 503 rather than
+  silently failing or accepting unverifiable tokens.
 
 ## Settings, notifications & activity history
 
@@ -169,6 +198,35 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
   template engine with arbitrary variable interpolation would be a much
   bigger feature than a solo freelancer's real need here (personalizing how
   invoice emails sound to their clients).
+
+## Performance
+
+- **Pagination**: `/invoices/` and `/expenses/` are paginated (`config/pagination.py`,
+  25/page, `?page_size=` up to 100) - the only two lists that realistically
+  grow large for an active freelancer. Clients, recurring invoices, API keys,
+  webhooks, and notifications stay unpaginated plain arrays - small,
+  bounded collections that don't need it, and pagination there would just be
+  frontend complexity with no real benefit.
+- **DB indexes**: composite indexes on `(user, status)` and `(user, issue_date)`
+  for `Invoice`, and `(user, expense_date)` for `Expense` - these match the
+  actual filter patterns used by the list endpoints and reports.
+
+## Billing (Free / Pro)
+
+- **Free tier** has no database row at all - it's just "no active `Subscription`",
+  enforced entirely in `billing/services/limits.py` (5 invoices/calendar-month,
+  `billing/models.py::FREE_TIER_MONTHLY_INVOICE_LIMIT`). Enforced at
+  `InvoiceViewSet.create()`, returning HTTP 402 with `upgrade_required: true`.
+- **Pro tier** requires a real Razorpay Subscription. You must first create a
+  Plan in the [Razorpay Dashboard](https://dashboard.razorpay.com/) (Subscriptions
+  > Plans) and set `RAZORPAY_PRO_MONTHLY_PLAN_ID` in `.env` - this app can't
+  create that Plan for you, it's tied to your own Razorpay account. Until
+  it's set, `/billing/subscribe/` returns a clear 503.
+- The Razorpay webhook handler (`invoicing/views.py::RazorpayWebhookView`,
+  shared with the existing invoice-payment webhook) also listens for
+  `subscription.activated`/`charged`/`halted`/`cancelled`/`completed` events
+  to keep the local `Subscription.status` in sync - see
+  `SUBSCRIPTION_STATUS_BY_EVENT` in that file.
 
 ## Known limitations (by design, for MVP)
 
@@ -200,3 +258,12 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
   support a separate React Native/Flutter codebase. The service worker never
   caches `/api/` responses, only the static app shell, so financial data is
   always fetched fresh.
+- The client-facing invoice link (`Invoice.public_view_token`) is a permanent,
+  unguessable-token link, not password-protected - anyone with the link can
+  view (and pay) that one invoice, same trust model as emailing a PDF. It
+  never exposes other invoices, the owner's other clients, or anything beyond
+  that single invoice's own fields (see `PublicInvoiceSerializer`).
+- The Pro plan is a single flat tier (unlimited invoices) - no metered
+  add-ons, seat-based pricing, or annual-vs-monthly billing cycles. A real
+  pricing page/plan comparison UI doesn't exist yet; Settings > Billing just
+  shows "Free" vs "Pro" and a usage counter.

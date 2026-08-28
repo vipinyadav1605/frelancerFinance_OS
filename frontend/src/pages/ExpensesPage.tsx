@@ -18,6 +18,10 @@ const emptyExpenseForm = { category: "", vendor_name: "", amount: "", gst_paid: 
 
 export function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [count, setCount] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrevious, setHasPrevious] = useState(false);
+  const [page, setPage] = useState(1);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -50,15 +54,27 @@ export function ExpensesPage() {
 
   function loadExpenses() {
     setLoading(true);
-    const filters: Record<string, string> = {};
+    const filters: Record<string, string | number> = { page };
     if (categoryFilter) filters.category = categoryFilter;
     if (dateFrom) filters.date_from = dateFrom;
     if (dateTo) filters.date_to = dateTo;
-    listExpenses(filters).then(setExpenses).finally(() => setLoading(false));
+    listExpenses(filters)
+      .then((data) => {
+        setExpenses(data.results);
+        setCount(data.count);
+        setHasNext(data.next !== null);
+        setHasPrevious(data.previous !== null);
+      })
+      .finally(() => setLoading(false));
   }
 
   useEffect(loadCategories, []);
-  useEffect(() => { setSelected(new Set()); loadExpenses(); }, [categoryFilter, dateFrom, dateTo]);
+  useEffect(() => { setSelected(new Set()); loadExpenses(); }, [categoryFilter, dateFrom, dateTo, page]);
+
+  function updateFilter(setter: (v: string) => void, value: string) {
+    setter(value);
+    setPage(1);
+  }
 
   function toggleSelected(id: number) {
     setSelected((prev) => {
@@ -262,12 +278,12 @@ export function ExpensesPage() {
       )}
 
       <div className="filter-bar">
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+        <select value={categoryFilter} onChange={(e) => updateFilter(setCategoryFilter, e.target.value)}>
           <option value="">All categories</option>
           {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="From date" />
-        <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="To date" />
+        <input type="date" value={dateFrom} onChange={(e) => updateFilter(setDateFrom, e.target.value)} title="From date" />
+        <input type="date" value={dateTo} onChange={(e) => updateFilter(setDateTo, e.target.value)} title="To date" />
       </div>
 
       {selected.size > 0 && (
@@ -305,6 +321,17 @@ export function ExpensesPage() {
             ))}
           </tbody>
         </table>
+      )}
+
+      {!loading && count > 0 && (
+        <div className="filter-bar" style={{ justifyContent: "space-between", marginTop: "1rem" }}>
+          <span className="page-subtitle">{count} expense{count === 1 ? "" : "s"} total</span>
+          <div className="form-actions">
+            <button className="btn btn-secondary" disabled={!hasPrevious} onClick={() => setPage((p) => p - 1)}>Previous</button>
+            <span className="page-subtitle" style={{ alignSelf: "center" }}>Page {page}</span>
+            <button className="btn btn-secondary" disabled={!hasNext} onClick={() => setPage((p) => p + 1)}>Next</button>
+          </div>
+        </div>
       )}
     </div>
   );

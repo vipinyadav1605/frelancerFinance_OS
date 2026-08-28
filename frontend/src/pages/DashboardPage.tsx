@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import {
   createReportShareLink, deleteReportShareLink, downloadGstr1Export, downloadProfitLossExport,
   getGstr1Summary, getProfitLossReport, listReportShareLinks,
@@ -6,6 +6,11 @@ import {
 import { OnboardingChecklist } from "../components/OnboardingChecklist";
 import type { Gstr1Summary, ProfitLossReport, ReportShareLink } from "../types";
 import { extractErrorMessage } from "../utils/errors";
+
+// recharts is the single largest dependency in this app - lazy-loaded so its
+// ~250KB only loads once someone actually opens the Dashboard, not on every
+// page (login, invoice list, etc. never need it).
+const DashboardCharts = lazy(() => import("../components/DashboardCharts").then((m) => ({ default: m.DashboardCharts })));
 
 function money(amount: string | number) {
   return `₹${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
@@ -177,6 +182,10 @@ export function DashboardPage() {
               <div className="dashboard-card-value">{money(report.net_profit)}</div>
             </div>
           </div>
+
+          <Suspense fallback={<div className="page-loading">Loading charts...</div>}>
+            <DashboardCharts periodStart={periodStart} periodEnd={periodEnd} />
+          </Suspense>
 
           <div className="card">
             <h3>GST Estimate</h3>

@@ -13,6 +13,7 @@ import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { InvoiceListPage } from "./pages/InvoiceListPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RecurringInvoicesPage } from "./pages/RecurringInvoicesPage";
+import { PublicInvoicePage } from "./pages/PublicInvoicePage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -32,6 +33,7 @@ function App() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
         <Route path="/shared/:token" element={<SharedReportPage />} />
+        <Route path="/pay/:token" element={<PublicInvoicePage />} />
         <Route path="/business-profile" element={<ProtectedRoute><BusinessProfilePage /></ProtectedRoute>} />
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute><ClientsPage /></ProtectedRoute>} />

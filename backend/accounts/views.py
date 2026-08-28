@@ -13,12 +13,17 @@ from invoicing.models import Invoice, InvoiceStatus
 from .models import BusinessProfile, NotificationPreference
 from .serializers import (
     BusinessProfileSerializer, ChangeEmailSerializer, ChangePasswordSerializer,
-    DeleteAccountSerializer, LogoutSerializer, NotificationPreferenceSerializer,
-    OnboardingStatusSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer,
-    RegisterSerializer, UserSerializer,
+    DeleteAccountSerializer, GoogleLoginSerializer, LogoutSerializer,
+    NotificationPreferenceSerializer, OnboardingStatusSerializer, PasswordResetConfirmSerializer,
+    PasswordResetRequestSerializer, RegisterSerializer, TwoFactorConfirmSetupSerializer,
+    TwoFactorDisableSerializer, TwoFactorTokenObtainPairSerializer, UserSerializer,
 )
+from .services import two_factor
 from .services.account_deletion import delete_user_account
 from .services.data_export import export_all_user_data_zip
+from .services.google_auth import (
+    GoogleAuthNotConfigured, InvalidGoogleToken, get_or_create_user_from_google, verify_google_id_token,
+)
 from .services.password_reset import reset_password_with_token, send_password_reset_email
 
 
@@ -32,10 +37,42 @@ class RegisterView(generics.CreateAPIView):
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
-    """FR-1 login, rate-limited against credential-stuffing/brute-force attempts."""
+    """
+    FR-1 login, rate-limited against credential-stuffing/brute-force attempts.
+    Also enforces 2FA when enabled (see TwoFactorTokenObtainPairSerializer):
+    submit email+password; if the response has `two_factor_required: true`,
+    resubmit the same request with `otp_code` added.
+    """
 
+    serializer_class = TwoFactorTokenObtainPairSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
+
+
+class GoogleLoginView(APIView):
+    """
+    Sign in (or sign up) with a Google ID token from Google Identity Services.
+    Returns the same {access, refresh} shape as the normal login endpoint.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        serializer = GoogleLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            profile = verify_google_id_token(serializer.validated_data["id_token"])
+        except GoogleAuthNotConfigured as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except InvalidGoogleToken:
+            return Response({"detail": "Invalid Google token."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user = get_or_create_user_from_google(profile["email"], profile["name"])
+        refresh = RefreshToken.for_user(user)
+        return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
 
 
 class LogoutView(APIView):
@@ -174,3 +211,35 @@ class DataExportView(APIView):
         response = HttpResponse(content, content_type="application/zip")
         response["Content-Disposition"] = 'attachment; filename="freelancer-finance-os-export.zip"'
         return response
+
+
+class TwoFactorStatusView(APIView):
+    def get(self, request):
+        return Response({"is_enabled": two_factor.is_enabled(request.user)})
+
+
+class TwoFactorSetupView(APIView):
+    """Step 1: generates a pending secret + QR code. Not enabled until /2fa/confirm/ succeeds."""
+
+    def post(self, request):
+        return Response(two_factor.start_setup(request.user))
+
+
+class TwoFactorConfirmView(APIView):
+    """Step 2: proves the code actually works before turning 2FA on."""
+
+    def post(self, request):
+        serializer = TwoFactorConfirmSetupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ok = two_factor.confirm_setup(request.user, serializer.validated_data["code"])
+        if not ok:
+            return Response({"detail": "Invalid or expired code."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"detail": "Two-factor authentication enabled."})
+
+
+class TwoFactorDisableView(APIView):
+    def post(self, request):
+        serializer = TwoFactorDisableSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        two_factor.disable(request.user)
+        return Response({"detail": "Two-factor authentication disabled."})

@@ -2,6 +2,7 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from config.pagination import StandardResultsPagination
 from integrations.services.webhooks import send_webhook_event
 
 from .models import BankStatementImport, Expense, ExpenseCategory
@@ -25,6 +26,7 @@ class ExpenseCategoryViewSet(viewsets.ModelViewSet):
 
 class ExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = ExpenseSerializer
+    pagination_class = StandardResultsPagination
 
     def get_queryset(self):
         qs = Expense.objects.filter(user=self.request.user)

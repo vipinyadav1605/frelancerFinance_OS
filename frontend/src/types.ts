@@ -274,4 +274,80 @@ export interface InvoiceDetail {
   paid_at: string | null;
   items: InvoiceItem[];
   payments: Payment[];
+  public_view_token: string;
+}
+
+export interface PublicInvoice {
+  invoice_number: string;
+  business_name: string;
+  business_gstin: string;
+  client_name_snapshot: string;
+  client_address_snapshot: string;
+  client_country_snapshot: string;
+  client_gstin_snapshot: string;
+  issue_date: string;
+  due_date: string;
+  currency: Currency;
+  tax_type: TaxType;
+  lut_reference: string;
+  subtotal: string;
+  cgst_amount: string;
+  sgst_amount: string;
+  igst_amount: string;
+  total_amount: string;
+  status: InvoiceStatus;
+  payment_link_url: string;
+  pdf_url: string | null;
+  items: InvoiceItem[];
+}
+
+export interface Paginated<T> {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+}
+
+export interface SearchResult {
+  type: "invoice" | "client";
+  label: string;
+  link_path: string;
+}
+
+export interface MonthlyRevenuePoint {
+  month: string;
+  total_income: string;
+  total_expense: string;
+}
+
+export interface ExpenseBreakdownItem {
+  category: string;
+  total: string;
+}
+
+export interface TopClient {
+  client_name: string;
+  total: string;
+}
+
+export interface DashboardInsights {
+  monthly_revenue_trend: MonthlyRevenuePoint[];
+  expense_breakdown: ExpenseBreakdownItem[];
+  top_clients: TopClient[];
+}
+
+export interface TwoFactorSetup {
+  secret: string;
+  otpauth_uri: string;
+  qr_code_data_uri: string;
+}
+
+export interface TwoFactorStatus {
+  is_enabled: boolean;
+}
+
+export interface BillingUsage {
+  is_pro: boolean;
+  invoices_this_month: number;
+  free_tier_monthly_invoice_limit: number;
 }

@@ -1,12 +1,15 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getMe, login as apiLogin, logout as apiLogout } from "../api/endpoints";
+import {
+  getMe, login as apiLogin, loginWithGoogle as apiLoginWithGoogle, logout as apiLogout,
+} from "../api/endpoints";
 import { tokenStorage } from "../api/client";
 import type { User } from "../types";
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, otpCode?: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 }
@@ -34,8 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     refreshUser().finally(() => setLoading(false));
   }, []);
 
-  async function login(email: string, password: string) {
-    await apiLogin(email, password);
+  async function login(email: string, password: string, otpCode?: string) {
+    await apiLogin(email, password, otpCode);
+    await refreshUser();
+  }
+
+  async function loginWithGoogle(idToken: string) {
+    await apiLoginWithGoogle(idToken);
     await refreshUser();
   }
 
@@ -45,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, loginWithGoogle, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

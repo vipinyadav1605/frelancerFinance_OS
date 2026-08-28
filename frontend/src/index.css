@@ -55,6 +55,8 @@ a { color: var(--navy); }
 .navbar-links a { color: white; text-decoration: none; opacity: 0.85; }
 .navbar-links a:hover { opacity: 1; text-decoration: underline; }
 .navbar-user { display: flex; align-items: center; gap: 0.8rem; font-size: 0.9rem; opacity: 0.9; }
+.navbar-search { position: relative; }
+.navbar-search input { padding: 0.4rem 0.7rem; border-radius: 6px; border: none; font-size: 0.85rem; width: 220px; }
 
 /* Page layout */
 .page { max-width: 960px; margin: 0 auto; padding: 1.8rem 1.6rem 4rem; }

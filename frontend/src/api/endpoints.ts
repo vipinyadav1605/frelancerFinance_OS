@@ -1,14 +1,22 @@
 import { apiClient, tokenStorage } from "./client";
 import type {
-  ApiKey, ApiKeyCreated, AppNotification, BankStatementImport, BusinessProfile, Client, Expense,
-  ExpenseCategory, Gstr1Summary, InvoiceDetail, InvoiceListItem, InvoiceItemInput, InvoiceStatus,
-  Currency, NotificationPreference, OnboardingStatus, ProfitLossReport, RecurringInvoiceProfile,
-  RecurringInvoiceItemInput, RecurringFrequency, ReportShareLink, SharedReport, User, WebhookEvent,
-  WebhookSubscription,
+  ApiKey, ApiKeyCreated, AppNotification, BankStatementImport, BillingUsage, BusinessProfile,
+  Client, DashboardInsights, Expense, ExpenseCategory, Gstr1Summary, InvoiceDetail, InvoiceListItem,
+  InvoiceItemInput, InvoiceStatus, Currency, NotificationPreference, OnboardingStatus, Paginated,
+  ProfitLossReport, PublicInvoice, RecurringInvoiceProfile, RecurringInvoiceItemInput,
+  RecurringFrequency, ReportShareLink, SearchResult, SharedReport, TwoFactorSetup, TwoFactorStatus,
+  User, WebhookEvent, WebhookSubscription,
 } from "../types";
 
-export async function login(email: string, password: string) {
-  const { data } = await apiClient.post("/auth/login/", { email, password });
+export async function login(email: string, password: string, otpCode?: string) {
+  const { data } = await apiClient.post("/auth/login/", {
+    email, password, ...(otpCode ? { otp_code: otpCode } : {}),
+  });
+  tokenStorage.set(data.access, data.refresh);
+}
+
+export async function loginWithGoogle(idToken: string) {
+  const { data } = await apiClient.post("/auth/google/", { id_token: idToken });
   tokenStorage.set(data.access, data.refresh);
 }
 
@@ -131,7 +139,9 @@ export async function updateClient(id: number, client: Partial<Client>): Promise
   return data;
 }
 
-export async function listInvoices(filters: { status?: InvoiceStatus; client?: number } = {}): Promise<InvoiceListItem[]> {
+export async function listInvoices(
+  filters: { status?: InvoiceStatus; client?: number; page?: number } = {}
+): Promise<Paginated<InvoiceListItem>> {
   const { data } = await apiClient.get("/invoices/", { params: filters });
   return data;
 }
@@ -181,9 +191,10 @@ export interface ExpenseFilters {
   category?: number;
   date_from?: string;
   date_to?: string;
+  page?: number;
 }
 
-export async function listExpenses(filters: ExpenseFilters = {}): Promise<Expense[]> {
+export async function listExpenses(filters: ExpenseFilters = {}): Promise<Paginated<Expense>> {
   const { data } = await apiClient.get("/expenses/", { params: filters });
   return data;
 }
@@ -388,4 +399,53 @@ export async function downloadGstr1Export(periodStart: string, periodEnd: string
   link.click();
   link.remove();
   window.URL.revokeObjectURL(blobUrl);
+}
+
+export async function getDashboardInsights(periodStart: string, periodEnd: string): Promise<DashboardInsights> {
+  const { data } = await apiClient.get("/reports/insights/", {
+    params: { period_start: periodStart, period_end: periodEnd },
+  });
+  return data;
+}
+
+export async function globalSearch(query: string): Promise<SearchResult[]> {
+  const { data } = await apiClient.get("/search/", { params: { q: query } });
+  return data.results;
+}
+
+export async function getPublicInvoice(token: string): Promise<PublicInvoice> {
+  const { data } = await apiClient.get(`/public/invoice/${token}/`);
+  return data;
+}
+
+export async function get2faStatus(): Promise<TwoFactorStatus> {
+  const { data } = await apiClient.get("/auth/2fa/status/");
+  return data;
+}
+
+export async function start2faSetup(): Promise<TwoFactorSetup> {
+  const { data } = await apiClient.post("/auth/2fa/setup/");
+  return data;
+}
+
+export async function confirm2faSetup(code: string): Promise<void> {
+  await apiClient.post("/auth/2fa/confirm/", { code });
+}
+
+export async function disable2fa(currentPassword: string): Promise<void> {
+  await apiClient.post("/auth/2fa/disable/", { current_password: currentPassword });
+}
+
+export async function getBillingStatus(): Promise<BillingUsage> {
+  const { data } = await apiClient.get("/billing/status/");
+  return data;
+}
+
+export async function subscribeToPro(): Promise<{ short_url: string }> {
+  const { data } = await apiClient.post("/billing/subscribe/");
+  return data;
+}
+
+export async function cancelSubscription(): Promise<void> {
+  await apiClient.post("/billing/cancel/");
 }

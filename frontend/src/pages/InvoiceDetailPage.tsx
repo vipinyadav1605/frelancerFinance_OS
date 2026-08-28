@@ -26,6 +26,7 @@ export function InvoiceDetailPage() {
   const [paidAmount, setPaidAmount] = useState("");
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 16));
   const [marking, setMarking] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   function load() {
     if (!id) return;
@@ -65,6 +66,18 @@ export function InvoiceDetailPage() {
       setActionError(extractErrorMessage(err, "Could not record payment."));
     } finally {
       setMarking(false);
+    }
+  }
+
+  async function handleCopyClientLink() {
+    if (!invoice) return;
+    const url = `${window.location.origin}/pay/${invoice.public_view_token}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      // Clipboard API can fail (e.g. insecure context) - nothing more we can do here.
     }
   }
 
@@ -145,6 +158,9 @@ export function InvoiceDetailPage() {
           {invoice.payment_link_url && (
             <a className="btn-link" href={invoice.payment_link_url} target="_blank" rel="noreferrer">View payment link</a>
           )}
+          <button className="btn-link" onClick={handleCopyClientLink}>
+            {copiedLink ? "Copied!" : "Copy client view link"}
+          </button>
         </div>
 
         {showMarkPaid && (
