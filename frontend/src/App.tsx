@@ -10,6 +10,7 @@ import { ExpensesPage } from "./pages/ExpensesPage";
 import { InvoiceCreatePage } from "./pages/InvoiceCreatePage";
 import { InvoiceDetailPage } from "./pages/InvoiceDetailPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { GitHubCallbackPage } from "./pages/GitHubCallbackPage";
 import { IntegrationsPage } from "./pages/IntegrationsPage";
 import { InvoiceListPage } from "./pages/InvoiceListPage";
 import { LandingPage } from "./pages/LandingPage";
@@ -39,6 +40,7 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/auth/github/callback" element={<GitHubCallbackPage />} />
           <Route path="/reset-password/:uid/:token" element={<ResetPasswordPage />} />
           <Route path="/shared/:token" element={<SharedReportPage />} />
           <Route path="/pay/:token" element={<PublicInvoicePage />} />

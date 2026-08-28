@@ -1,7 +1,7 @@
 import { AxiosError } from "axios";
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { GoogleSignInButton } from "../components/GoogleSignInButton";
+import { SocialSignInButtons } from "../components/SocialSignInButtons";
 import { useAuth } from "../context/AuthContext";
 import { emailError, requiredError } from "../utils/validation";
 import { extractErrorMessage } from "../utils/errors";
@@ -89,12 +89,7 @@ export function LoginPage() {
           {submitting ? "Logging in..." : needsOtp ? "Verify Code" : "Log in"}
         </button>
 
-        {!needsOtp && (
-          <>
-            <div className="page-subtitle" style={{ textAlign: "center" }}>or</div>
-            <GoogleSignInButton />
-          </>
-        )}
+        {!needsOtp && <SocialSignInButtons />}
 
         <p className="auth-switch">
           <Link to="/forgot-password">Forgot password?</Link>

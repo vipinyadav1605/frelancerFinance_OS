@@ -13,7 +13,7 @@ from django.conf import settings
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
-from ..models import User
+from .oauth_common import get_or_create_oauth_user
 
 
 class GoogleAuthNotConfigured(Exception):
@@ -39,13 +39,5 @@ def verify_google_id_token(raw_id_token: str) -> dict:
     return {"email": payload["email"], "name": payload.get("name", "")}
 
 
-def get_or_create_user_from_google(email: str, name: str) -> User:
-    # Deliberately not get_or_create(email__iexact=...) - that lookup kwarg
-    # would also get passed straight through to create(), which doesn't
-    # accept an "email__iexact" field.
-    user = User.objects.filter(email__iexact=email).first()
-    if user is None:
-        user = User.objects.create(email=email, name=name)
-        user.set_unusable_password()  # this account can only ever sign in via Google
-        user.save(update_fields=["password"])
-    return user
+def get_or_create_user_from_google(email: str, name: str):
+    return get_or_create_oauth_user(email, name)

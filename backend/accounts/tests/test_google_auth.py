@@ -1,5 +1,6 @@
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
@@ -27,6 +28,7 @@ class GetOrCreateUserFromGoogleTests(TestCase):
 
 class GoogleLoginViewTests(TestCase):
     def setUp(self):
+        cache.clear()  # throttle counters (shared "login" scope) live in the cache
         self.api = APIClient()
 
     @override_settings(GOOGLE_OAUTH_CLIENT_ID="")

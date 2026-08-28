@@ -3,16 +3,18 @@ from rest_framework_simplejwt.views import TokenRefreshView
 
 from .views import (
     BusinessProfileView, ChangeEmailView, ChangePasswordView, DataExportView,
-    DeleteAccountView, GoogleLoginView, LogoutView, MeView, NotificationPreferenceView,
-    OnboardingStatusView, PasswordResetConfirmView, PasswordResetRequestView, ReferralStatusView,
-    RegisterView, ThrottledTokenObtainPairView, TwoFactorConfirmView, TwoFactorDisableView,
-    TwoFactorSetupView, TwoFactorStatusView,
+    DeleteAccountView, GitHubLoginView, GoogleLoginView, LogoutView, MeView, MicrosoftLoginView,
+    NotificationPreferenceView, OnboardingStatusView, PasswordResetConfirmView,
+    PasswordResetRequestView, ReferralStatusView, RegisterView, ThrottledTokenObtainPairView,
+    TwoFactorConfirmView, TwoFactorDisableView, TwoFactorSetupView, TwoFactorStatusView,
 )
 
 urlpatterns = [
     path("register/", RegisterView.as_view(), name="auth-register"),
     path("login/", ThrottledTokenObtainPairView.as_view(), name="auth-login"),
     path("google/", GoogleLoginView.as_view(), name="auth-google"),
+    path("microsoft/", MicrosoftLoginView.as_view(), name="auth-microsoft"),
+    path("github/", GitHubLoginView.as_view(), name="auth-github"),
     path("refresh/", TokenRefreshView.as_view(), name="auth-refresh"),
     path("logout/", LogoutView.as_view(), name="auth-logout"),
     path("password-reset/", PasswordResetRequestView.as_view(), name="auth-password-reset"),

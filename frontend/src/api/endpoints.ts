@@ -20,6 +20,16 @@ export async function loginWithGoogle(idToken: string) {
   tokenStorage.set(data.access, data.refresh);
 }
 
+export async function loginWithMicrosoft(idToken: string) {
+  const { data } = await apiClient.post("/auth/microsoft/", { id_token: idToken });
+  tokenStorage.set(data.access, data.refresh);
+}
+
+export async function loginWithGitHub(code: string) {
+  const { data } = await apiClient.post("/auth/github/", { code });
+  tokenStorage.set(data.access, data.refresh);
+}
+
 export async function register(email: string, password: string, name: string, referredByCode?: string) {
   await apiClient.post("/auth/register/", { email, password, name, referred_by_code: referredByCode || "" });
 }

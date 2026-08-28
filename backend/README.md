@@ -123,6 +123,8 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
 | `/api/search/` | GET | global search across invoices + clients (`?q=`, min 2 chars) |
 | `/api/reports/insights/` | GET | Dashboard chart data: revenue trend, expense breakdown, top clients |
 | `/api/auth/google/` | POST | Google Sign-In: `{"id_token": "..."}` from Google Identity Services |
+| `/api/auth/microsoft/` | POST | Microsoft Sign-In: `{"id_token": "..."}` from MSAL.js |
+| `/api/auth/github/` | POST | GitHub Sign-In: `{"code": "..."}` - the OAuth authorization code from GitHub's redirect |
 | `/api/auth/2fa/status/` | GET | is 2FA enabled for the current user |
 | `/api/auth/2fa/setup/` | POST | generates a pending TOTP secret + QR code |
 | `/api/auth/2fa/confirm/` | POST | `{"code"}` - proves the code works, enables 2FA |
@@ -169,14 +171,31 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
   the response has `two_factor_required` (note: DRF's `ValidationError`
   coerces every dict value into a string-wrapped array - the frontend must
   check *truthiness*, not `=== true`), resubmit with `otp_code` added.
-- **Google Sign-In**: verifies a Google ID token server-side
-  (`accounts/services/google_auth.py`) and issues this app's own JWT pair -
-  never trusts the frontend's claim about who signed in. Needs
-  `GOOGLE_OAUTH_CLIENT_ID` set to a real OAuth Client ID from
-  [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-  (created under your own Google account/project - this app can't create one
-  for you). Until then, `/auth/google/` returns a clear 503 rather than
-  silently failing or accepting unverifiable tokens.
+- **Social sign-in (Google / Microsoft / GitHub)**: all three verify the
+  provider's own token/code server-side and issue this app's own JWT pair -
+  never trust the frontend's claim about who signed in. Each shares one
+  "find or create a user by email" helper
+  (`accounts/services/oauth_common.py::get_or_create_oauth_user`) - a
+  brand-new account gets an unusable password (it can only ever sign in via
+  that provider), while a matching existing email is reused as-is.
+  Until its client ID (and, for GitHub, secret) is set, each endpoint
+  returns a clear 503 rather than silently failing or accepting
+  unverifiable tokens:
+  - **Google** (`accounts/services/google_auth.py`) - verifies an ID token
+    from Google Identity Services against `GOOGLE_OAUTH_CLIENT_ID`.
+  - **Microsoft** (`accounts/services/microsoft_auth.py`) - verifies an ID
+    token from MSAL.js against Microsoft's own JWKS (keys rotate, so this
+    fetches/caches the right signing key by the token's `kid`, rather than
+    trusting a fixed secret) and `MICROSOFT_OAUTH_CLIENT_ID`.
+  - **GitHub** (`accounts/services/github_auth.py`) - unlike the other two,
+    GitHub's OAuth flow needs a client *secret* to exchange an authorization
+    code for an access token, so this can't be a client-only ID-token flow -
+    the frontend only ever sends us the `code`; the exchange, and the
+    profile/email lookup that follows it, happen here, server-side.
+
+  All three are created under your own Google/Azure/GitHub account - this
+  app can't create any of them for you. See `.env.example` for the exact
+  setup steps for each.
 
 ## Settings, notifications & activity history
 

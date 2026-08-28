@@ -1,7 +1,7 @@
 import { type FormEvent, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { register } from "../api/endpoints";
-import { GoogleSignInButton } from "../components/GoogleSignInButton";
+import { SocialSignInButtons } from "../components/SocialSignInButtons";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { extractErrorMessage } from "../utils/errors";
@@ -110,8 +110,7 @@ export function RegisterPage() {
           {submitting ? "Creating account..." : "Sign up"}
         </button>
 
-        <div className="page-subtitle" style={{ textAlign: "center" }}>or</div>
-        <GoogleSignInButton />
+        <SocialSignInButtons />
 
         <p className="auth-switch">
           Already have an account? <Link to="/login">Log in</Link>

@@ -226,6 +226,23 @@ FRONTEND_BASE_URL = env("FRONTEND_BASE_URL", default="http://localhost:5173")
 # than accepting tokens it can't actually verify.
 GOOGLE_OAUTH_CLIENT_ID = env("GOOGLE_OAUTH_CLIENT_ID", default="")
 
+# --- Microsoft Sign-In -------------------------------------------------
+# Create an "App registration" in the Azure Portal (Microsoft Entra ID >
+# App registrations > New registration; add a SPA platform with the
+# frontend's URL as a redirect URI). Until it's set, /auth/microsoft/
+# responds with a clear "not configured" error.
+MICROSOFT_OAUTH_CLIENT_ID = env("MICROSOFT_OAUTH_CLIENT_ID", default="")
+
+# --- GitHub Sign-In ----------------------------------------------------
+# Create an OAuth App at https://github.com/settings/developers with the
+# frontend's `/auth/github/callback` route as its callback URL. Unlike
+# Google/Microsoft, this needs a client *secret* (GitHub's flow can't be
+# done as a client-only ID-token exchange) - never expose the secret to the
+# frontend. Until both are set, /auth/github/ responds with a clear
+# "not configured" error.
+GITHUB_OAUTH_CLIENT_ID = env("GITHUB_OAUTH_CLIENT_ID", default="")
+GITHUB_OAUTH_CLIENT_SECRET = env("GITHUB_OAUTH_CLIENT_SECRET", default="")
+
 # --- Razorpay Subscriptions (billing) --------------------------------------
 # Create these plans in the Razorpay Dashboard > Subscriptions > Plans first
 # (Free tier needs no plan - it's enforced entirely in this app's own code).

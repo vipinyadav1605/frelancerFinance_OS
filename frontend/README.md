@@ -27,6 +27,7 @@ match the backend's `GOOGLE_OAUTH_CLIENT_ID`).
 | `/` | Public marketing/pricing landing page (logged-out visitors) - shows "Go to Dashboard" instead of sign-up CTAs when already logged in |
 | `/terms`, `/privacy` | Static legal pages, linked from the footer on every page |
 | `/register`, `/login` | FR-1. `/register?ref=<code>` credits the referrer named by that code |
+| `/auth/github/callback` | GitHub OAuth redirect target - exchanges the returned code for a session, then forwards to `/dashboard` |
 | `/forgot-password`, `/reset-password/:uid/:token` | Password reset via emailed link |
 | `/business-profile` | FR-2 |
 | `/clients` | FR-3: list, add, edit clients |
@@ -85,9 +86,28 @@ match the backend's `GOOGLE_OAUTH_CLIENT_ID`).
   resubmit with `otp_code` added (`pages/LoginPage.tsx`). Note: check that
   field for *truthiness*, not `=== true` - DRF's `ValidationError` coerces
   dict values into string-wrapped arrays (`["True"]`), not a bare boolean.
-- **Google Sign-In** (`components/GoogleSignInButton.tsx`) loads Google's
-  Identity Services script on demand and renders nothing if
-  `VITE_GOOGLE_CLIENT_ID` isn't set - safe to leave unconfigured.
+- **Social sign-in** (`components/SocialSignInButtons.tsx`, used on both
+  Login and Register) renders Google/Microsoft/GitHub buttons and the "or"
+  divider above them - but only for whichever providers actually have a
+  `VITE_..._CLIENT_ID` set, and the divider itself disappears entirely if
+  none do, so a plain email/password form never shows a floating "or" with
+  nothing underneath it:
+  - **Google** (`components/GoogleSignInButton.tsx`) loads Google's Identity
+    Services script on demand and renders its own official button.
+  - **Microsoft** (`components/MicrosoftSignInButton.tsx`) uses MSAL.js's
+    popup sign-in flow. `@azure/msal-browser` is a large dependency
+    (~60KB gzipped) - lazy-loaded (`React.lazy`/`Suspense` in
+    `SocialSignInButtons.tsx`) so it only ships to a browser that actually
+    needs it, not to every visitor of the login/register page.
+  - **GitHub** (`components/GitHubSignInButton.tsx` + `pages/GitHubCallbackPage.tsx`,
+    route `/auth/github/callback`) can't use a client-only token flow like
+    the other two - GitHub's OAuth exchange needs a client secret, so the
+    button just redirects to GitHub's own authorize page, and the callback
+    page hands the returned `code` to the backend to finish the exchange.
+    A random `state` value is round-tripped through `sessionStorage` to
+    guard against CSRF on that redirect. The callback's effect is guarded
+    with a `useRef` since a GitHub authorization code can only be exchanged
+    once, and React 19's StrictMode double-invokes effects in dev.
 - **Landing page** (`pages/LandingPage.tsx`, route `/`) is the only public
   page with its own header instead of the app `Navbar` (the Navbar renders
   nothing when logged out) - shows sign-up CTAs to visitors and a "Go to

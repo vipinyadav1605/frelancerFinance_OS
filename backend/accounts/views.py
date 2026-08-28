@@ -13,16 +13,25 @@ from invoicing.models import Invoice, InvoiceStatus
 from .models import BusinessProfile, NotificationPreference, User
 from .serializers import (
     BusinessProfileSerializer, ChangeEmailSerializer, ChangePasswordSerializer,
-    DeleteAccountSerializer, GoogleLoginSerializer, LogoutSerializer,
-    NotificationPreferenceSerializer, OnboardingStatusSerializer, PasswordResetConfirmSerializer,
-    PasswordResetRequestSerializer, RegisterSerializer, TwoFactorConfirmSetupSerializer,
-    TwoFactorDisableSerializer, TwoFactorTokenObtainPairSerializer, UserSerializer,
+    DeleteAccountSerializer, GitHubLoginSerializer, GoogleLoginSerializer, LogoutSerializer,
+    MicrosoftLoginSerializer, NotificationPreferenceSerializer, OnboardingStatusSerializer,
+    PasswordResetConfirmSerializer, PasswordResetRequestSerializer, RegisterSerializer,
+    TwoFactorConfirmSetupSerializer, TwoFactorDisableSerializer, TwoFactorTokenObtainPairSerializer,
+    UserSerializer,
 )
 from .services import two_factor
 from .services.account_deletion import delete_user_account
 from .services.data_export import export_all_user_data_zip
+from .services.github_auth import (
+    GitHubAuthNotConfigured, InvalidGitHubCode, exchange_github_code_for_profile,
+    get_or_create_user_from_github,
+)
 from .services.google_auth import (
     GoogleAuthNotConfigured, InvalidGoogleToken, get_or_create_user_from_google, verify_google_id_token,
+)
+from .services.microsoft_auth import (
+    InvalidMicrosoftToken, MicrosoftAuthNotConfigured, get_or_create_user_from_microsoft,
+    verify_microsoft_id_token,
 )
 from .services.password_reset import reset_password_with_token, send_password_reset_email
 
@@ -71,6 +80,56 @@ class GoogleLoginView(APIView):
             return Response({"detail": "Invalid Google token."}, status=status.HTTP_401_UNAUTHORIZED)
 
         user = get_or_create_user_from_google(profile["email"], profile["name"])
+        refresh = RefreshToken.for_user(user)
+        return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
+
+
+class MicrosoftLoginView(APIView):
+    """Sign in (or sign up) with a Microsoft ID token from MSAL.js. Same response shape as Google."""
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        serializer = MicrosoftLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            profile = verify_microsoft_id_token(serializer.validated_data["id_token"])
+        except MicrosoftAuthNotConfigured as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except InvalidMicrosoftToken:
+            return Response({"detail": "Invalid Microsoft token."}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user = get_or_create_user_from_microsoft(profile["email"], profile["name"])
+        refresh = RefreshToken.for_user(user)
+        return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
+
+
+class GitHubLoginView(APIView):
+    """
+    Sign in (or sign up) with a GitHub OAuth authorization code (see
+    services/github_auth.py for why this can't be a client-only ID token
+    flow like Google/Microsoft). Same response shape as Google.
+    """
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "login"
+
+    def post(self, request):
+        serializer = GitHubLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            profile = exchange_github_code_for_profile(serializer.validated_data["code"])
+        except GitHubAuthNotConfigured as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except InvalidGitHubCode as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_401_UNAUTHORIZED)
+
+        user = get_or_create_user_from_github(profile["email"], profile["name"])
         refresh = RefreshToken.for_user(user)
         return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
 
