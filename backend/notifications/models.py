@@ -7,6 +7,7 @@ class NotificationType(models.TextChoices):
     INVOICE_PAID = "invoice_paid", "Invoice paid"
     RECURRING_INVOICE_GENERATED = "recurring_invoice_generated", "Recurring invoice generated"
     WEBHOOK_FAILED = "webhook_failed", "Webhook delivery failed"
+    REFERRAL_REWARD_GRANTED = "referral_reward_granted", "Referral reward granted"
 
 
 class Notification(models.Model):

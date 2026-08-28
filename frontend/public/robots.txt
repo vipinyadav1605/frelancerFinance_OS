@@ -1,0 +1,10 @@
+# App pages (dashboard, invoices, etc.) require login and have no value
+# being indexed - only the public marketing/legal pages are crawlable.
+User-agent: *
+Allow: /$
+Allow: /terms$
+Allow: /privacy$
+Disallow: /
+
+# Update to the absolute URL (https://yourdomain.com/sitemap.xml) once deployed.
+Sitemap: /sitemap.xml

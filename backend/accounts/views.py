@@ -10,7 +10,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from clients.models import Client
 from invoicing.models import Invoice, InvoiceStatus
 
-from .models import BusinessProfile, NotificationPreference
+from .models import BusinessProfile, NotificationPreference, User
 from .serializers import (
     BusinessProfileSerializer, ChangeEmailSerializer, ChangePasswordSerializer,
     DeleteAccountSerializer, GoogleLoginSerializer, LogoutSerializer,
@@ -211,6 +211,16 @@ class DataExportView(APIView):
         response = HttpResponse(content, content_type="application/zip")
         response["Content-Disposition"] = 'attachment; filename="freelancer-finance-os-export.zip"'
         return response
+
+
+class ReferralStatusView(APIView):
+    """Settings > Billing referral nudge: the user's own code + how many people have used it."""
+
+    def get(self, request):
+        return Response({
+            "referral_code": request.user.referral_code,
+            "referral_count": User.objects.filter(referred_by=request.user).count(),
+        })
 
 
 class TwoFactorStatusView(APIView):

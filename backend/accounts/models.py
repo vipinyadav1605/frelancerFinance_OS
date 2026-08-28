@@ -1,8 +1,14 @@
+import secrets
+
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 
 from .constants import INDIAN_STATE_CHOICES
 from .managers import UserManager
+
+
+def _generate_referral_code():
+    return secrets.token_urlsafe(6)
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -13,6 +19,14 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
+    # Growth loop: every user gets a shareable `/register?ref=<code>` link.
+    # Reward for a successful referral is granted in
+    # invoicing.views._handle_subscription_event when the referred user's
+    # subscription first goes active - see billing/services/referrals.py.
+    referral_code = models.CharField(max_length=16, unique=True, default=_generate_referral_code, editable=False)
+    referred_by = models.ForeignKey(
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="referrals",
+    )
 
     objects = UserManager()
 

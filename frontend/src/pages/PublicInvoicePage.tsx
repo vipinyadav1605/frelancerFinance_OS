@@ -28,7 +28,7 @@ export function PublicInvoicePage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  if (loading) return <div className="page-loading">Loading...</div>;
+  if (loading) return <div className="page-loading"><span className="spinner-lg" /> Loading...</div>;
 
   if (error || !invoice) {
     return (
@@ -66,23 +66,25 @@ export function PublicInvoicePage() {
           </div>
         </div>
 
-        <table className="items-table">
-          <thead>
-            <tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit Price</th><th>Tax %</th><th>Amount</th></tr>
-          </thead>
-          <tbody>
-            {invoice.items.map((item) => (
-              <tr key={item.id}>
-                <td>{item.description}</td>
-                <td>{item.hsn_sac_code || "-"}</td>
-                <td>{item.quantity}</td>
-                <td>{money(item.unit_price, invoice.currency)}</td>
-                <td>{item.tax_rate_percent}%</td>
-                <td>{money(item.amount, invoice.currency)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="items-table">
+            <thead>
+              <tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit Price</th><th>Tax %</th><th>Amount</th></tr>
+            </thead>
+            <tbody>
+              {invoice.items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.description}</td>
+                  <td>{item.hsn_sac_code || "-"}</td>
+                  <td>{item.quantity}</td>
+                  <td>{money(item.unit_price, invoice.currency)}</td>
+                  <td>{item.tax_rate_percent}%</td>
+                  <td>{money(item.amount, invoice.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div className="invoice-totals">
           <div><span>Subtotal</span><span>{money(invoice.subtotal, invoice.currency)}</span></div>
@@ -114,6 +116,10 @@ export function PublicInvoicePage() {
           )}
         </div>
       </div>
+
+      <p className="public-page-brand">
+        Invoiced with <a href="/">Freelancer Finance OS</a>
+      </p>
     </div>
   );
 }

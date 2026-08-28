@@ -4,8 +4,10 @@ import {
   listRecurringInvoiceProfiles, updateRecurringInvoiceProfile,
 } from "../api/endpoints";
 import { CURRENCIES } from "../constants";
+import { useToast } from "../context/ToastContext";
 import type { Client, Currency, RecurringFrequency, RecurringInvoiceItemInput, RecurringInvoiceProfile } from "../types";
 import { extractErrorMessage } from "../utils/errors";
+import { requiredError } from "../utils/validation";
 
 function emptyItem(): RecurringInvoiceItemInput {
   return { description: "", hsn_sac_code: "", quantity: "1", unit_price: "0", tax_rate_percent: "18" };
@@ -32,11 +34,13 @@ function money(amount: string, currency: string) {
 }
 
 export function RecurringInvoicesPage() {
+  const toast = useToast();
   const [profiles, setProfiles] = useState<RecurringInvoiceProfile[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [clientError, setClientError] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -69,11 +73,14 @@ export function RecurringInvoicesPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
-    if (!form.client) { setError("Please select a client."); return; }
+    const err = form.client ? "" : requiredError("", "Client");
+    setClientError(err);
+    if (err) return;
+
     setSaving(true);
     try {
       await createRecurringInvoiceProfile({
-        client: form.client,
+        client: form.client as number,
         frequency: form.frequency,
         currency: form.currency,
         exchange_rate_to_inr: form.currency === "INR" ? "1" : form.exchange_rate_to_inr,
@@ -86,6 +93,7 @@ export function RecurringInvoicesPage() {
       setForm(emptyForm);
       setShowForm(false);
       load();
+      toast.success("Recurring invoice created.");
     } catch (err) {
       setError(extractErrorMessage(err, "Could not save recurring invoice."));
     } finally {
@@ -96,12 +104,14 @@ export function RecurringInvoicesPage() {
   async function toggleActive(profile: RecurringInvoiceProfile) {
     await updateRecurringInvoiceProfile(profile.id, { is_active: !profile.is_active });
     load();
+    toast.success(profile.is_active ? "Recurring invoice paused." : "Recurring invoice resumed.");
   }
 
   async function handleDelete(profile: RecurringInvoiceProfile) {
     if (!confirm(`Stop and delete the recurring invoice for ${profile.client_name}?`)) return;
     await deleteRecurringInvoiceProfile(profile.id);
     load();
+    toast.success("Recurring invoice deleted.");
   }
 
   return (
@@ -117,14 +127,18 @@ export function RecurringInvoicesPage() {
       </div>
 
       {showForm && (
-        <form className="card form" onSubmit={handleSubmit}>
+        <form className="card form" onSubmit={handleSubmit} noValidate>
           {error && <div className="alert alert-error">{error}</div>}
           <div className="form-row">
             <label>Client
-              <select value={form.client} onChange={(e) => update("client", e.target.value ? Number(e.target.value) : "")} required>
+              <select
+                value={form.client} onChange={(e) => { update("client", e.target.value ? Number(e.target.value) : ""); setClientError(""); }}
+                className={clientError ? "field-error-input" : ""}
+              >
                 <option value="">Select a client</option>
                 {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {clientError && <span className="field-error-text">{clientError}</span>}
             </label>
             <label>Frequency
               <select value={form.frequency} onChange={(e) => update("frequency", e.target.value as RecurringFrequency)}>
@@ -158,27 +172,30 @@ export function RecurringInvoicesPage() {
           </label>
 
           <h3>Line Items</h3>
-          <table className="items-table">
-            <thead>
-              <tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit Price</th><th>Tax %</th><th></th></tr>
-            </thead>
-            <tbody>
-              {form.items.map((item, i) => (
-                <tr key={i}>
-                  <td><input value={item.description} onChange={(e) => updateItem(i, "description", e.target.value)} required /></td>
-                  <td><input value={item.hsn_sac_code} onChange={(e) => updateItem(i, "hsn_sac_code", e.target.value)} /></td>
-                  <td><input type="number" step="0.01" value={item.quantity} onChange={(e) => updateItem(i, "quantity", e.target.value)} required /></td>
-                  <td><input type="number" step="0.01" value={item.unit_price} onChange={(e) => updateItem(i, "unit_price", e.target.value)} required /></td>
-                  <td><input type="number" step="0.01" value={item.tax_rate_percent} onChange={(e) => updateItem(i, "tax_rate_percent", e.target.value)} /></td>
-                  <td>{form.items.length > 1 && <button type="button" className="btn-link" onClick={() => removeItem(i)}>Remove</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="items-table">
+              <thead>
+                <tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit Price</th><th>Tax %</th><th></th></tr>
+              </thead>
+              <tbody>
+                {form.items.map((item, i) => (
+                  <tr key={i}>
+                    <td><input value={item.description} onChange={(e) => updateItem(i, "description", e.target.value)} required /></td>
+                    <td><input value={item.hsn_sac_code} onChange={(e) => updateItem(i, "hsn_sac_code", e.target.value)} /></td>
+                    <td><input type="number" step="0.01" min="0.01" value={item.quantity} onChange={(e) => updateItem(i, "quantity", e.target.value)} required /></td>
+                    <td><input type="number" step="0.01" min="0" value={item.unit_price} onChange={(e) => updateItem(i, "unit_price", e.target.value)} required /></td>
+                    <td><input type="number" step="0.01" min="0" value={item.tax_rate_percent} onChange={(e) => updateItem(i, "tax_rate_percent", e.target.value)} /></td>
+                    <td>{form.items.length > 1 && <button type="button" className="btn-link" onClick={() => removeItem(i)}>Remove</button>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <button type="button" className="btn btn-secondary" onClick={addItem}>+ Add Line Item</button>
 
           <div className="form-actions">
             <button className="btn btn-primary" type="submit" disabled={saving}>
+              {saving && <span className="btn-spinner" />}
               {saving ? "Saving..." : "Save Recurring Invoice"}
             </button>
             <button className="btn btn-secondary" type="button" onClick={() => setShowForm(false)}>Cancel</button>
@@ -187,33 +204,35 @@ export function RecurringInvoicesPage() {
       )}
 
       {loading ? (
-        <div className="page-loading">Loading...</div>
+        <div className="page-loading"><span className="spinner-lg" /> Loading...</div>
       ) : profiles.length === 0 ? (
         <div className="empty-state">No recurring invoices yet. Set one up for a retainer or repeat client.</div>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr><th>Client</th><th>Frequency</th><th>Next Invoice</th><th>Last Generated</th><th>Status</th><th></th></tr>
-          </thead>
-          <tbody>
-            {profiles.map((p) => (
-              <tr key={p.id}>
-                <td>{p.client_name}</td>
-                <td style={{ textTransform: "capitalize" }}>{p.frequency}</td>
-                <td>{p.next_run_date} <span style={{ color: "var(--grey)" }}>({money(p.items.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0).toFixed(2), p.currency)})</span></td>
-                <td>{p.last_generated_invoice_number || "-"}</td>
-                <td>
-                  <span className={`badge ${p.is_active ? "badge-green" : "badge-grey"}`}>{p.is_active ? "Active" : "Paused"}</span>
-                </td>
-                <td>
-                  <button className="btn-link" onClick={() => toggleActive(p)}>{p.is_active ? "Pause" : "Resume"}</button>
-                  {" "}&middot;{" "}
-                  <button className="btn-link" onClick={() => handleDelete(p)}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr><th>Client</th><th>Frequency</th><th>Next Invoice</th><th>Last Generated</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+              {profiles.map((p) => (
+                <tr key={p.id}>
+                  <td>{p.client_name}</td>
+                  <td style={{ textTransform: "capitalize" }}>{p.frequency}</td>
+                  <td>{p.next_run_date} <span style={{ color: "var(--grey)" }}>({money(p.items.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0).toFixed(2), p.currency)})</span></td>
+                  <td>{p.last_generated_invoice_number || "-"}</td>
+                  <td>
+                    <span className={`badge ${p.is_active ? "badge-green" : "badge-grey"}`}>{p.is_active ? "Active" : "Paused"}</span>
+                  </td>
+                  <td>
+                    <button className="btn-link" onClick={() => toggleActive(p)}>{p.is_active ? "Pause" : "Resume"}</button>
+                    {" "}&middot;{" "}
+                    <button className="btn-link" onClick={() => handleDelete(p)}>Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

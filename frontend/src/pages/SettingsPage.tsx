@@ -2,13 +2,15 @@ import { type FormEvent, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   cancelSubscription, changeEmail, changePassword, confirm2faSetup, deleteAccount, disable2fa,
-  downloadDataExport, get2faStatus, getBillingStatus, getNotificationPreference, start2faSetup,
-  subscribeToPro, updateNotificationPreference,
+  downloadDataExport, get2faStatus, getBillingStatus, getNotificationPreference, getReferralStatus,
+  start2faSetup, subscribeToPro, updateNotificationPreference,
 } from "../api/endpoints";
 import { useAuth } from "../context/AuthContext";
-import type { BillingUsage, NotificationPreference, TwoFactorSetup } from "../types";
+import { useToast } from "../context/ToastContext";
+import type { BillingUsage, NotificationPreference, ReferralStatus, TwoFactorSetup } from "../types";
 import { applyTheme, getStoredTheme, type Theme } from "../utils/theme";
 import { extractErrorMessage } from "../utils/errors";
+import { confirmPasswordError, emailError, passwordError, requiredError } from "../utils/validation";
 import { BusinessProfilePage } from "./BusinessProfilePage";
 import { IntegrationsPage } from "./IntegrationsPage";
 
@@ -60,6 +62,7 @@ function ProfileTab() {
 }
 
 function TwoFactorSection() {
+  const toast = useToast();
   const [isEnabled, setIsEnabled] = useState<boolean | null>(null);
   const [setup, setSetup] = useState<TwoFactorSetup | null>(null);
   const [confirmCode, setConfirmCode] = useState("");
@@ -67,6 +70,7 @@ function TwoFactorSection() {
   const [confirming, setConfirming] = useState(false);
 
   const [disablePassword, setDisablePassword] = useState("");
+  const [disablePasswordError, setDisablePasswordError] = useState("");
   const [disableError, setDisableError] = useState("");
   const [disabling, setDisabling] = useState(false);
 
@@ -90,6 +94,7 @@ function TwoFactorSection() {
       await confirm2faSetup(confirmCode);
       setSetup(null);
       loadStatus();
+      toast.success("Two-factor authentication enabled.");
     } catch (err) {
       setConfirmError(extractErrorMessage(err, "Invalid or expired code."));
     } finally {
@@ -100,11 +105,16 @@ function TwoFactorSection() {
   async function handleDisable(e: FormEvent) {
     e.preventDefault();
     setDisableError("");
+    const err = requiredError(disablePassword, "Current password");
+    setDisablePasswordError(err);
+    if (err) return;
+
     setDisabling(true);
     try {
       await disable2fa(disablePassword);
       setDisablePassword("");
       loadStatus();
+      toast.success("Two-factor authentication disabled.");
     } catch (err) {
       setDisableError(extractErrorMessage(err, "Could not disable two-factor authentication."));
     } finally {
@@ -112,7 +122,7 @@ function TwoFactorSection() {
     }
   }
 
-  if (isEnabled === null) return <div className="card"><div className="page-loading">Loading...</div></div>;
+  if (isEnabled === null) return <div className="card"><div className="page-loading"><span className="spinner-lg" /> Loading...</div></div>;
 
   return (
     <div className="card">
@@ -125,26 +135,33 @@ function TwoFactorSection() {
       {isEnabled ? (
         <>
           <div className="alert alert-success" style={{ marginBottom: "0.9rem" }}>Two-factor authentication is enabled.</div>
-          <form className="form form-inline" onSubmit={handleDisable}>
+          <form className="form form-inline" onSubmit={handleDisable} noValidate>
             {disableError && <div className="alert alert-error">{disableError}</div>}
             <label>Current password (to disable)
-              <input type="password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} required />
+              <input
+                type="password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)}
+                onBlur={() => setDisablePasswordError(requiredError(disablePassword, "Current password"))}
+                className={disablePasswordError ? "field-error-input" : ""}
+              />
+              {disablePasswordError && <span className="field-error-text">{disablePasswordError}</span>}
             </label>
             <button className="btn btn-secondary" type="submit" disabled={disabling}>
+              {disabling && <span className="btn-spinner" />}
               {disabling ? "Disabling..." : "Disable 2FA"}
             </button>
           </form>
         </>
       ) : setup ? (
-        <form onSubmit={handleConfirm} style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+        <form onSubmit={handleConfirm} noValidate style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
           {confirmError && <div className="alert alert-error">{confirmError}</div>}
           <p className="page-subtitle">Scan this QR code with your authenticator app, or enter the key manually:</p>
-          <img src={setup.qr_code_data_uri} alt="2FA QR code" style={{ width: 180, height: 180 }} />
+          <img src={setup.qr_code_data_uri} alt="2FA QR code" style={{ width: 180, height: 180, borderRadius: "var(--radius-sm)" }} />
           <p className="page-subtitle">Manual key: <code style={{ userSelect: "all" }}>{setup.secret}</code></p>
           <label>Enter the 6-digit code from your app to confirm
             <input type="text" inputMode="numeric" maxLength={6} value={confirmCode} onChange={(e) => setConfirmCode(e.target.value)} required />
           </label>
           <button className="btn btn-primary" type="submit" disabled={confirming}>
+            {confirming && <span className="btn-spinner" />}
             {confirming ? "Verifying..." : "Confirm & Enable"}
           </button>
         </form>
@@ -157,32 +174,42 @@ function TwoFactorSection() {
 
 function SecurityTab() {
   const { user, logout } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
-  const [passwordError, setPasswordError] = useState("");
-  const [passwordSaved, setPasswordSaved] = useState(false);
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [passwordFieldErrors, setPasswordFieldErrors] = useState({ current: "", next: "", confirm: "" });
+  const [passwordError_, setPasswordError_] = useState("");
   const [savingPassword, setSavingPassword] = useState(false);
 
   const [newEmail, setNewEmail] = useState(user?.email ?? "");
   const [emailPassword, setEmailPassword] = useState("");
-  const [emailError, setEmailError] = useState("");
-  const [emailSaved, setEmailSaved] = useState(false);
+  const [emailFieldErrors, setEmailFieldErrors] = useState({ email: "", password: "" });
+  const [emailError_, setEmailError_] = useState("");
   const [savingEmail, setSavingEmail] = useState(false);
 
   async function handlePasswordSubmit(e: FormEvent) {
     e.preventDefault();
-    setPasswordError("");
-    setPasswordSaved(false);
+    setPasswordError_("");
+    const errors = {
+      current: requiredError(currentPassword, "Current password"),
+      next: passwordError(newPassword),
+      confirm: confirmPasswordError(newPassword, confirmNewPassword),
+    };
+    setPasswordFieldErrors(errors);
+    if (Object.values(errors).some(Boolean)) return;
+
     setSavingPassword(true);
     try {
       await changePassword(currentPassword, newPassword);
-      setPasswordSaved(true);
       setCurrentPassword("");
       setNewPassword("");
+      setConfirmNewPassword("");
+      toast.success("Password changed.");
     } catch (err) {
-      setPasswordError(extractErrorMessage(err, "Could not change password."));
+      setPasswordError_(extractErrorMessage(err, "Could not change password."));
     } finally {
       setSavingPassword(false);
     }
@@ -190,15 +217,18 @@ function SecurityTab() {
 
   async function handleEmailSubmit(e: FormEvent) {
     e.preventDefault();
-    setEmailError("");
-    setEmailSaved(false);
+    setEmailError_("");
+    const errors = { email: emailError(newEmail), password: requiredError(emailPassword, "Current password") };
+    setEmailFieldErrors(errors);
+    if (Object.values(errors).some(Boolean)) return;
+
     setSavingEmail(true);
     try {
       await changeEmail(newEmail, emailPassword);
-      setEmailSaved(true);
       setEmailPassword("");
+      toast.success("Email changed. Use your new email to log in next time.");
     } catch (err) {
-      setEmailError(extractErrorMessage(err, "Could not change email."));
+      setEmailError_(extractErrorMessage(err, "Could not change email."));
     } finally {
       setSavingEmail(false);
     }
@@ -212,32 +242,60 @@ function SecurityTab() {
 
   return (
     <>
-      <form className="card form" onSubmit={handlePasswordSubmit}>
+      <form className="card form" onSubmit={handlePasswordSubmit} noValidate>
         <h3>Change Password</h3>
-        {passwordError && <div className="alert alert-error">{passwordError}</div>}
-        {passwordSaved && <div className="alert alert-success">Password changed.</div>}
+        {passwordError_ && <div className="alert alert-error">{passwordError_}</div>}
         <label>Current password
-          <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
+          <input
+            type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)}
+            onBlur={() => setPasswordFieldErrors((f) => ({ ...f, current: requiredError(currentPassword, "Current password") }))}
+            className={passwordFieldErrors.current ? "field-error-input" : ""}
+          />
+          {passwordFieldErrors.current && <span className="field-error-text">{passwordFieldErrors.current}</span>}
         </label>
         <label>New password
-          <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
+          <input
+            type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+            onBlur={() => setPasswordFieldErrors((f) => ({ ...f, next: passwordError(newPassword) }))}
+            className={passwordFieldErrors.next ? "field-error-input" : ""}
+          />
+          {passwordFieldErrors.next && <span className="field-error-text">{passwordFieldErrors.next}</span>}
+        </label>
+        <label>Confirm new password
+          <input
+            type="password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)}
+            onBlur={() => setPasswordFieldErrors((f) => ({ ...f, confirm: confirmPasswordError(newPassword, confirmNewPassword) }))}
+            className={passwordFieldErrors.confirm ? "field-error-input" : ""}
+          />
+          {passwordFieldErrors.confirm && <span className="field-error-text">{passwordFieldErrors.confirm}</span>}
         </label>
         <button className="btn btn-primary" type="submit" disabled={savingPassword}>
+          {savingPassword && <span className="btn-spinner" />}
           {savingPassword ? "Saving..." : "Change Password"}
         </button>
       </form>
 
-      <form className="card form" onSubmit={handleEmailSubmit}>
+      <form className="card form" onSubmit={handleEmailSubmit} noValidate>
         <h3>Change Email</h3>
-        {emailError && <div className="alert alert-error">{emailError}</div>}
-        {emailSaved && <div className="alert alert-success">Email changed. Use your new email to log in next time.</div>}
+        {emailError_ && <div className="alert alert-error">{emailError_}</div>}
         <label>New email
-          <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} required />
+          <input
+            type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)}
+            onBlur={() => setEmailFieldErrors((f) => ({ ...f, email: emailError(newEmail) }))}
+            className={emailFieldErrors.email ? "field-error-input" : ""}
+          />
+          {emailFieldErrors.email && <span className="field-error-text">{emailFieldErrors.email}</span>}
         </label>
         <label>Current password (to confirm)
-          <input type="password" value={emailPassword} onChange={(e) => setEmailPassword(e.target.value)} required />
+          <input
+            type="password" value={emailPassword} onChange={(e) => setEmailPassword(e.target.value)}
+            onBlur={() => setEmailFieldErrors((f) => ({ ...f, password: requiredError(emailPassword, "Current password") }))}
+            className={emailFieldErrors.password ? "field-error-input" : ""}
+          />
+          {emailFieldErrors.password && <span className="field-error-text">{emailFieldErrors.password}</span>}
         </label>
         <button className="btn btn-primary" type="submit" disabled={savingEmail}>
+          {savingEmail && <span className="btn-spinner" />}
           {savingEmail ? "Saving..." : "Change Email"}
         </button>
       </form>
@@ -254,6 +312,7 @@ function SecurityTab() {
 }
 
 function NotificationsTab() {
+  const toast = useToast();
   const [prefs, setPrefs] = useState<NotificationPreference | null>(null);
   const [error, setError] = useState("");
 
@@ -265,13 +324,14 @@ function NotificationsTab() {
     setPrefs(next);
     try {
       await updateNotificationPreference(next);
+      toast.success("Preference saved.");
     } catch (err) {
       setError(extractErrorMessage(err, "Could not save preference."));
       setPrefs(prefs); // revert on failure
     }
   }
 
-  if (!prefs) return <div className="card"><div className="page-loading">Loading...</div></div>;
+  if (!prefs) return <div className="card"><div className="page-loading"><span className="spinner-lg" /> Loading...</div></div>;
 
   return (
     <div className="card">
@@ -297,6 +357,7 @@ function NotificationsTab() {
 }
 
 function BillingTab() {
+  const toast = useToast();
   const [usage, setUsage] = useState<BillingUsage | null>(null);
   const [error, setError] = useState("");
   const [subscribing, setSubscribing] = useState(false);
@@ -313,6 +374,7 @@ function BillingTab() {
     setSubscribing(true);
     try {
       const { short_url } = await subscribeToPro();
+      toast.info("Opening secure checkout in a new tab...");
       window.open(short_url, "_blank");
     } catch (err) {
       setError(extractErrorMessage(err, "Upgrading isn't available right now."));
@@ -327,6 +389,7 @@ function BillingTab() {
     try {
       await cancelSubscription();
       loadUsage();
+      toast.success("Subscription cancelled.");
     } catch (err) {
       setError(extractErrorMessage(err, "Could not cancel - try again shortly."));
     } finally {
@@ -334,50 +397,100 @@ function BillingTab() {
     }
   }
 
-  if (!usage) return <div className="card"><div className="page-loading">Loading...</div></div>;
+  if (!usage) return <div className="card"><div className="page-loading"><span className="spinner-lg" /> Loading...</div></div>;
+
+  return (
+    <>
+      <div className="card">
+        <h3>Plan &amp; Usage</h3>
+        {error && <div className="alert alert-error">{error}</div>}
+
+        <div className="dashboard-cards" style={{ marginTop: "0.6rem" }}>
+          <div className="card dashboard-card dashboard-card-highlight">
+            <div className="dashboard-card-label">Current Plan</div>
+            <div className="dashboard-card-value">{usage.is_pro ? "Pro" : "Free"}</div>
+          </div>
+          <div className="card dashboard-card">
+            <div className="dashboard-card-label">Invoices This Month</div>
+            <div className="dashboard-card-value">
+              {usage.invoices_this_month}{!usage.is_pro && ` / ${usage.free_tier_monthly_invoice_limit}`}
+            </div>
+          </div>
+        </div>
+
+        {usage.is_pro ? (
+          <button className="btn btn-secondary" onClick={handleCancel} disabled={cancelling}>
+            {cancelling && <span className="btn-spinner" />}
+            {cancelling ? "Cancelling..." : "Cancel Pro Subscription"}
+          </button>
+        ) : (
+          <>
+            <p className="page-subtitle">
+              The free plan includes {usage.free_tier_monthly_invoice_limit} invoices per month. Upgrade
+              to Pro for unlimited invoices.
+            </p>
+            <button className="btn btn-primary" onClick={handleSubscribe} disabled={subscribing}>
+              {subscribing && <span className="btn-spinner" />}
+              {subscribing ? "Starting checkout..." : "Upgrade to Pro"}
+            </button>
+          </>
+        )}
+      </div>
+
+      <ReferralCard />
+    </>
+  );
+}
+
+function ReferralCard() {
+  const toast = useToast();
+  const [referral, setReferral] = useState<ReferralStatus | null>(null);
+
+  useEffect(() => {
+    getReferralStatus().then(setReferral);
+  }, []);
+
+  if (!referral) return null;
+
+  const referralLink = `${window.location.origin}/register?ref=${referral.referral_code}`;
+
+  async function copyReferralLink() {
+    try {
+      await navigator.clipboard.writeText(referralLink);
+      toast.success("Referral link copied to clipboard.");
+    } catch {
+      toast.error("Could not copy the link - your browser may be blocking clipboard access.");
+    }
+  }
 
   return (
     <div className="card">
-      <h3>Plan &amp; Usage</h3>
-      {error && <div className="alert alert-error">{error}</div>}
-
-      <div className="dashboard-cards" style={{ marginTop: "0.6rem" }}>
-        <div className="card dashboard-card dashboard-card-highlight">
-          <div className="dashboard-card-label">Current Plan</div>
-          <div className="dashboard-card-value">{usage.is_pro ? "Pro" : "Free"}</div>
-        </div>
-        <div className="card dashboard-card">
-          <div className="dashboard-card-label">Invoices This Month</div>
-          <div className="dashboard-card-value">
-            {usage.invoices_this_month}{!usage.is_pro && ` / ${usage.free_tier_monthly_invoice_limit}`}
-          </div>
-        </div>
+      <h3>Refer a Freelancer</h3>
+      <p className="page-subtitle">
+        Share your link — when someone you refer upgrades to Pro, you get a free month of Pro too.
+      </p>
+      <div className="form-row" style={{ alignItems: "flex-end" }}>
+        <label style={{ flex: 2 }}>Your referral link
+          <input value={referralLink} readOnly onFocus={(e) => e.target.select()} />
+        </label>
+        <button className="btn btn-secondary" onClick={copyReferralLink}>Copy Link</button>
       </div>
-
-      {usage.is_pro ? (
-        <button className="btn btn-secondary" onClick={handleCancel} disabled={cancelling}>
-          {cancelling ? "Cancelling..." : "Cancel Pro Subscription"}
-        </button>
-      ) : (
-        <>
-          <p className="page-subtitle">
-            The free plan includes {usage.free_tier_monthly_invoice_limit} invoices per month. Upgrade
-            to Pro for unlimited invoices.
-          </p>
-          <button className="btn btn-primary" onClick={handleSubscribe} disabled={subscribing}>
-            {subscribing ? "Starting checkout..." : "Upgrade to Pro"}
-          </button>
-        </>
-      )}
+      <p className="page-subtitle" style={{ marginTop: "0.8rem" }}>
+        {referral.referral_count === 0
+          ? "No one has signed up with your link yet."
+          : `${referral.referral_count} freelancer${referral.referral_count === 1 ? "" : "s"} signed up with your link.`}
+      </p>
     </div>
   );
 }
 
 function DangerZoneTab() {
   const { logout } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const [exporting, setExporting] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+  const [deletePasswordError, setDeletePasswordError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
 
@@ -385,6 +498,9 @@ function DangerZoneTab() {
     setExporting(true);
     try {
       await downloadDataExport();
+      toast.success("Export downloaded.");
+    } catch {
+      toast.error("Could not prepare your export - try again shortly.");
     } finally {
       setExporting(false);
     }
@@ -393,7 +509,11 @@ function DangerZoneTab() {
   async function handleDelete(e: FormEvent) {
     e.preventDefault();
     setDeleteError("");
+    const err = requiredError(deletePassword, "Current password");
+    setDeletePasswordError(err);
+    if (err) return;
     if (!confirm("This permanently deletes your account and all data. This cannot be undone. Continue?")) return;
+
     setDeleting(true);
     try {
       await deleteAccount(deletePassword);
@@ -412,11 +532,12 @@ function DangerZoneTab() {
         <h3>Export Your Data</h3>
         <p className="page-subtitle">Download all your clients, invoices, and expenses as a zip of CSV files.</p>
         <button className="btn btn-secondary" onClick={handleExport} disabled={exporting}>
+          {exporting && <span className="btn-spinner" />}
           {exporting ? "Preparing..." : "Download All My Data"}
         </button>
       </div>
 
-      <form className="card form danger-zone" onSubmit={handleDelete}>
+      <form className="card form danger-zone" onSubmit={handleDelete} noValidate>
         <h3>Delete Account</h3>
         <p className="page-subtitle">
           Permanently deletes your account, business profile, clients, invoices, expenses, and
@@ -424,9 +545,15 @@ function DangerZoneTab() {
         </p>
         {deleteError && <div className="alert alert-error">{deleteError}</div>}
         <label>Current password (to confirm)
-          <input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} required />
+          <input
+            type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)}
+            onBlur={() => setDeletePasswordError(requiredError(deletePassword, "Current password"))}
+            className={deletePasswordError ? "field-error-input" : ""}
+          />
+          {deletePasswordError && <span className="field-error-text">{deletePasswordError}</span>}
         </label>
         <button className="btn btn-primary" type="submit" style={{ background: "var(--red)" }} disabled={deleting}>
+          {deleting && <span className="btn-spinner" />}
           {deleting ? "Deleting..." : "Permanently Delete My Account"}
         </button>
       </form>

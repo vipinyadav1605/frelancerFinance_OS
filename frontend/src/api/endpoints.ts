@@ -1,11 +1,11 @@
 import { apiClient, tokenStorage } from "./client";
 import type {
   ApiKey, ApiKeyCreated, AppNotification, BankStatementImport, BillingUsage, BusinessProfile,
-  Client, DashboardInsights, Expense, ExpenseCategory, Gstr1Summary, InvoiceDetail, InvoiceListItem,
+  Client, DashboardInsights, Expense, ExpenseCategory, Gstr1Summary, Gstr3bSummary, InvoiceDetail, InvoiceListItem,
   InvoiceItemInput, InvoiceStatus, Currency, NotificationPreference, OnboardingStatus, Paginated,
   ProfitLossReport, PublicInvoice, RecurringInvoiceProfile, RecurringInvoiceItemInput,
-  RecurringFrequency, ReportShareLink, SearchResult, SharedReport, TwoFactorSetup, TwoFactorStatus,
-  User, WebhookEvent, WebhookSubscription,
+  RecurringFrequency, ReferralStatus, ReportShareLink, SearchResult, SharedReport, TwoFactorSetup,
+  TwoFactorStatus, User, WebhookEvent, WebhookSubscription,
 } from "../types";
 
 export async function login(email: string, password: string, otpCode?: string) {
@@ -20,8 +20,17 @@ export async function loginWithGoogle(idToken: string) {
   tokenStorage.set(data.access, data.refresh);
 }
 
-export async function register(email: string, password: string, name: string) {
-  await apiClient.post("/auth/register/", { email, password, name });
+export async function register(email: string, password: string, name: string, referredByCode?: string) {
+  await apiClient.post("/auth/register/", { email, password, name, referred_by_code: referredByCode || "" });
+}
+
+export async function getReferralStatus(): Promise<ReferralStatus> {
+  const { data } = await apiClient.get("/auth/referral/");
+  return data;
+}
+
+export async function joinWaitlist(email: string): Promise<void> {
+  await apiClient.post("/waitlist/", { email });
 }
 
 export async function logout() {
@@ -399,6 +408,13 @@ export async function downloadGstr1Export(periodStart: string, periodEnd: string
   link.click();
   link.remove();
   window.URL.revokeObjectURL(blobUrl);
+}
+
+export async function getGstr3bSummary(periodStart: string, periodEnd: string): Promise<Gstr3bSummary> {
+  const { data } = await apiClient.get("/reports/gstr3b-summary/", {
+    params: { period_start: periodStart, period_end: periodEnd },
+  });
+  return data;
 }
 
 export async function getDashboardInsights(periodStart: string, periodEnd: string): Promise<DashboardInsights> {

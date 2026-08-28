@@ -7,10 +7,12 @@ from django.utils import timezone
 from rest_framework import permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from billing.models import Subscription, SubscriptionStatus
 from billing.services.limits import can_create_invoice
+from billing.services.referrals import grant_referral_reward
 from config.pagination import StandardResultsPagination
 from integrations.services.webhooks import send_webhook_event
 from notifications.services import notify
@@ -40,14 +42,35 @@ SUBSCRIPTION_STATUS_BY_EVENT = {
 
 def _handle_subscription_event(payload, new_status):
     entity = payload["payload"]["subscription"]["entity"]
-    fields = {"status": new_status}
+    subscription = (
+        Subscription.objects.select_related("user__referred_by")
+        .filter(razorpay_subscription_id=entity["id"])
+        .first()
+    )
+    if subscription is None:
+        logger.warning("Webhook for unknown Razorpay subscription id %s", entity["id"])
+        return
+
+    subscription.status = new_status
+    update_fields = ["status", "updated_at"]
     if entity.get("current_end"):
-        fields["current_period_end"] = timezone.make_aware(
+        subscription.current_period_end = timezone.make_aware(
             timezone.datetime.fromtimestamp(entity["current_end"])
         )
-    updated = Subscription.objects.filter(razorpay_subscription_id=entity["id"]).update(**fields)
-    if not updated:
-        logger.warning("Webhook for unknown Razorpay subscription id %s", entity["id"])
+        update_fields.append("current_period_end")
+    subscription.save(update_fields=update_fields)
+
+    # Reward the referrer once, the first time this user ever goes active -
+    # `subscription.charged` fires every billing cycle, so this must not
+    # re-fire on renewals.
+    if (
+        new_status == SubscriptionStatus.ACTIVE
+        and not subscription.referral_reward_granted
+        and subscription.user.referred_by_id
+    ):
+        grant_referral_reward(subscription.user.referred_by)
+        subscription.referral_reward_granted = True
+        subscription.save(update_fields=["referral_reward_granted"])
 
 
 def _invoice_webhook_payload(invoice):
@@ -165,6 +188,8 @@ class PublicInvoiceView(APIView):
 
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "public_view"
 
     def get(self, request, token):
         invoice = get_object_or_404(Invoice, public_view_token=token)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listInvoices, markInvoicePaid } from "../api/endpoints";
+import { useToast } from "../context/ToastContext";
 import type { InvoiceListItem, InvoiceStatus } from "../types";
 
 const MARKABLE_STATUSES: InvoiceStatus[] = ["sent", "overdue"];
@@ -23,6 +24,7 @@ function currencyAmount(amount: string, currency: string) {
 }
 
 export function InvoiceListPage() {
+  const toast = useToast();
   const [invoices, setInvoices] = useState<InvoiceListItem[]>([]);
   const [count, setCount] = useState(0);
   const [hasNext, setHasNext] = useState(false);
@@ -78,12 +80,16 @@ export function InvoiceListPage() {
     if (!confirm(`Mark ${markableSelected.length} invoice(s) as paid in full, dated today?`)) return;
     setBulkMarking(true);
     const today = new Date().toISOString();
+    const count = markableSelected.length;
     try {
       await Promise.all(
         markableSelected.map((inv) => markInvoicePaid(inv.id, inv.total_amount, today))
       );
       setSelected(new Set());
       load();
+      toast.success(`Marked ${count} invoice${count === 1 ? "" : "s"} as paid.`);
+    } catch {
+      toast.error("Could not mark all selected invoices as paid.");
     } finally {
       setBulkMarking(false);
     }
@@ -121,44 +127,50 @@ export function InvoiceListPage() {
       )}
 
       {loading ? (
-        <div className="page-loading">Loading...</div>
+        <div className="card">
+          <div className="skeleton skeleton-line" style={{ width: "90%" }} />
+          <div className="skeleton skeleton-line" style={{ width: "75%" }} />
+          <div className="skeleton skeleton-line" style={{ width: "85%" }} />
+        </div>
       ) : invoices.length === 0 ? (
         <div className="empty-state">No invoices yet. Create your first invoice to get started.</div>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>
-                <input
-                  type="checkbox"
-                  onChange={toggleSelectAllMarkable}
-                  checked={invoices.some((inv) => MARKABLE_STATUSES.includes(inv.status)) &&
-                    invoices.filter((inv) => MARKABLE_STATUSES.includes(inv.status)).every((inv) => selected.has(inv.id))}
-                  title="Select all payable invoices"
-                />
-              </th>
-              <th>Invoice #</th><th>Client</th><th>Issue Date</th><th>Due Date</th>
-              <th>Amount</th><th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invoices.map((inv) => (
-              <tr key={inv.id}>
-                <td>
-                  {MARKABLE_STATUSES.includes(inv.status) && (
-                    <input type="checkbox" checked={selected.has(inv.id)} onChange={() => toggleSelected(inv.id)} />
-                  )}
-                </td>
-                <td><Link to={`/invoices/${inv.id}`}>{inv.invoice_number}</Link></td>
-                <td>{inv.client_name}</td>
-                <td>{inv.issue_date}</td>
-                <td>{inv.due_date}</td>
-                <td>{currencyAmount(inv.total_amount, inv.currency)}</td>
-                <td><span className={`badge ${STATUS_BADGE[inv.status]}`}>{inv.status}</span></td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    onChange={toggleSelectAllMarkable}
+                    checked={invoices.some((inv) => MARKABLE_STATUSES.includes(inv.status)) &&
+                      invoices.filter((inv) => MARKABLE_STATUSES.includes(inv.status)).every((inv) => selected.has(inv.id))}
+                    title="Select all payable invoices"
+                  />
+                </th>
+                <th>Invoice #</th><th>Client</th><th>Issue Date</th><th>Due Date</th>
+                <th>Amount</th><th>Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {invoices.map((inv) => (
+                <tr key={inv.id}>
+                  <td>
+                    {MARKABLE_STATUSES.includes(inv.status) && (
+                      <input type="checkbox" checked={selected.has(inv.id)} onChange={() => toggleSelected(inv.id)} />
+                    )}
+                  </td>
+                  <td><Link to={`/invoices/${inv.id}`}>{inv.invoice_number}</Link></td>
+                  <td>{inv.client_name}</td>
+                  <td>{inv.issue_date}</td>
+                  <td>{inv.due_date}</td>
+                  <td>{currencyAmount(inv.total_amount, inv.currency)}</td>
+                  <td><span className={`badge ${STATUS_BADGE[inv.status]}`}>{inv.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {!loading && count > 0 && (

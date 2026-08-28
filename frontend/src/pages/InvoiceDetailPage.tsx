@@ -1,8 +1,10 @@
 import { type FormEvent, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { getInvoice, markInvoicePaid, sendInvoice } from "../api/endpoints";
+import { useToast } from "../context/ToastContext";
 import type { InvoiceDetail } from "../types";
 import { extractErrorMessage } from "../utils/errors";
+import { positiveNumberError } from "../utils/validation";
 
 const TAX_TYPE_LABEL: Record<string, string> = {
   CGST_SGST: "CGST + SGST (same state)",
@@ -18,15 +20,16 @@ function money(amount: string, currency: string) {
 
 export function InvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const toast = useToast();
   const [invoice, setInvoice] = useState<InvoiceDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState("");
   const [sending, setSending] = useState(false);
   const [showMarkPaid, setShowMarkPaid] = useState(false);
   const [paidAmount, setPaidAmount] = useState("");
+  const [paidAmountError, setPaidAmountError] = useState("");
   const [paidDate, setPaidDate] = useState(new Date().toISOString().slice(0, 16));
   const [marking, setMarking] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   function load() {
     if (!id) return;
@@ -46,6 +49,7 @@ export function InvoiceDetailPage() {
     try {
       const updated = await sendInvoice(invoice.id);
       setInvoice(updated);
+      toast.success("Invoice sent to client.");
     } catch (err) {
       setActionError(extractErrorMessage(err, "Could not send invoice."));
     } finally {
@@ -57,11 +61,16 @@ export function InvoiceDetailPage() {
     e.preventDefault();
     if (!invoice) return;
     setActionError("");
+    const err = positiveNumberError(paidAmount, "Amount");
+    setPaidAmountError(err);
+    if (err) return;
+
     setMarking(true);
     try {
       const updated = await markInvoicePaid(invoice.id, paidAmount, new Date(paidDate).toISOString());
       setInvoice(updated);
       setShowMarkPaid(false);
+      toast.success("Payment recorded.");
     } catch (err) {
       setActionError(extractErrorMessage(err, "Could not record payment."));
     } finally {
@@ -74,14 +83,13 @@ export function InvoiceDetailPage() {
     const url = `${window.location.origin}/pay/${invoice.public_view_token}`;
     try {
       await navigator.clipboard.writeText(url);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
+      toast.success("Client view link copied to clipboard.");
     } catch {
-      // Clipboard API can fail (e.g. insecure context) - nothing more we can do here.
+      toast.error("Could not copy the link - your browser may be blocking clipboard access.");
     }
   }
 
-  if (loading) return <div className="page-loading">Loading...</div>;
+  if (loading) return <div className="page-loading"><span className="spinner-lg" /> Loading...</div>;
   if (!invoice) return <div className="page">Invoice not found.</div>;
 
   return (
@@ -111,23 +119,25 @@ export function InvoiceDetailPage() {
           </div>
         </div>
 
-        <table className="items-table">
-          <thead>
-            <tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit Price</th><th>Tax %</th><th>Amount</th></tr>
-          </thead>
-          <tbody>
-            {invoice.items.map((item) => (
-              <tr key={item.id}>
-                <td>{item.description}</td>
-                <td>{item.hsn_sac_code || "-"}</td>
-                <td>{item.quantity}</td>
-                <td>{money(item.unit_price, invoice.currency)}</td>
-                <td>{item.tax_rate_percent}%</td>
-                <td>{money(item.amount, invoice.currency)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-scroll">
+          <table className="items-table">
+            <thead>
+              <tr><th>Description</th><th>HSN/SAC</th><th>Qty</th><th>Unit Price</th><th>Tax %</th><th>Amount</th></tr>
+            </thead>
+            <tbody>
+              {invoice.items.map((item) => (
+                <tr key={item.id}>
+                  <td>{item.description}</td>
+                  <td>{item.hsn_sac_code || "-"}</td>
+                  <td>{item.quantity}</td>
+                  <td>{money(item.unit_price, invoice.currency)}</td>
+                  <td>{item.tax_rate_percent}%</td>
+                  <td>{money(item.amount, invoice.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
         <div className="invoice-totals">
           <div><span>Subtotal</span><span>{money(invoice.subtotal, invoice.currency)}</span></div>
@@ -149,6 +159,7 @@ export function InvoiceDetailPage() {
           )}
           {invoice.status === "draft" && (
             <button className="btn btn-primary" onClick={handleSend} disabled={sending}>
+              {sending && <span className="btn-spinner" />}
               {sending ? "Sending..." : "Send to Client"}
             </button>
           )}
@@ -158,20 +169,24 @@ export function InvoiceDetailPage() {
           {invoice.payment_link_url && (
             <a className="btn-link" href={invoice.payment_link_url} target="_blank" rel="noreferrer">View payment link</a>
           )}
-          <button className="btn-link" onClick={handleCopyClientLink}>
-            {copiedLink ? "Copied!" : "Copy client view link"}
-          </button>
+          <button className="btn-link" onClick={handleCopyClientLink}>Copy client view link</button>
         </div>
 
         {showMarkPaid && (
-          <form className="form form-inline" onSubmit={handleMarkPaid}>
+          <form className="form form-inline" onSubmit={handleMarkPaid} noValidate>
             <label>Amount received
-              <input type="number" step="0.01" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)} required />
+              <input
+                type="number" step="0.01" value={paidAmount} onChange={(e) => setPaidAmount(e.target.value)}
+                onBlur={() => setPaidAmountError(positiveNumberError(paidAmount, "Amount"))}
+                className={paidAmountError ? "field-error-input" : ""}
+              />
+              {paidAmountError && <span className="field-error-text">{paidAmountError}</span>}
             </label>
             <label>Payment date
               <input type="datetime-local" value={paidDate} onChange={(e) => setPaidDate(e.target.value)} required />
             </label>
             <button className="btn btn-primary" type="submit" disabled={marking}>
+              {marking && <span className="btn-spinner" />}
               {marking ? "Saving..." : "Confirm Payment"}
             </button>
           </form>
@@ -181,19 +196,21 @@ export function InvoiceDetailPage() {
       {invoice.payments.length > 0 && (
         <div className="card">
           <h4>Payment History</h4>
-          <table className="data-table">
-            <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead>
-            <tbody>
-              {invoice.payments.map((p) => (
-                <tr key={p.id}>
-                  <td>{new Date(p.payment_date).toLocaleString()}</td>
-                  <td>{money(p.amount, invoice.currency)}</td>
-                  <td>{p.method}</td>
-                  <td>{p.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead>
+              <tbody>
+                {invoice.payments.map((p) => (
+                  <tr key={p.id}>
+                    <td>{new Date(p.payment_date).toLocaleString()}</td>
+                    <td>{money(p.amount, invoice.currency)}</td>
+                    <td>{p.method}</td>
+                    <td>{p.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

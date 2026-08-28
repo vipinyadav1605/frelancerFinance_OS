@@ -9,13 +9,18 @@ from .validators import validate_gstin_format, validate_pan_format
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
+    # The REFERRER's own referral_code, not this new user's - a silently
+    # ignored unknown/blank code just means no referrer, never a validation error.
+    referred_by_code = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ["id", "email", "name", "password"]
+        fields = ["id", "email", "name", "password", "referred_by_code"]
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        referred_by_code = validated_data.pop("referred_by_code", "").strip()
+        referred_by = User.objects.filter(referral_code=referred_by_code).first() if referred_by_code else None
+        return User.objects.create_user(referred_by=referred_by, **validated_data)
 
 
 class UserSerializer(serializers.ModelSerializer):

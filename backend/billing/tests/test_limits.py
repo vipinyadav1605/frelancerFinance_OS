@@ -156,3 +156,53 @@ class SubscriptionWebhookTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.subscription.refresh_from_db()
         self.assertEqual(self.subscription.status, SubscriptionStatus.CANCELLED)
+
+
+class ReferralRewardWebhookTests(TestCase):
+    def setUp(self):
+        self.referrer = User.objects.create_user(email="riya@example.com", password="testpass123")
+        self.referred_user = User.objects.create_user(
+            email="amit@example.com", password="testpass123", referred_by=self.referrer,
+        )
+        self.subscription = Subscription.objects.create(
+            user=self.referred_user, razorpay_subscription_id="sub_test123", status=SubscriptionStatus.CANCELLED,
+        )
+
+    def _activate(self):
+        api = APIClient()
+        payload = {
+            "event": "subscription.activated",
+            "payload": {"subscription": {"entity": {"id": "sub_test123", "current_end": 1893456000}}},
+        }
+        with patch("invoicing.views.verify_webhook_signature", return_value=True):
+            return api.post("/api/webhooks/razorpay/", payload, format="json")
+
+    def test_referrer_gets_a_free_month_of_pro_on_first_activation(self):
+        self._activate()
+        referrer_sub = Subscription.objects.get(user=self.referrer)
+        self.assertTrue(is_pro(self.referrer))
+        self.assertEqual(referrer_sub.status, SubscriptionStatus.ACTIVE)
+
+    def test_reward_is_not_granted_twice_on_repeat_billing_cycles(self):
+        self._activate()
+        referrer_sub = Subscription.objects.get(user=self.referrer)
+        first_period_end = referrer_sub.current_period_end
+
+        # Simulate a later `subscription.charged` webhook for the same subscription.
+        api = APIClient()
+        payload = {
+            "event": "subscription.charged",
+            "payload": {"subscription": {"entity": {"id": "sub_test123", "current_end": 1896134400}}},
+        }
+        with patch("invoicing.views.verify_webhook_signature", return_value=True):
+            api.post("/api/webhooks/razorpay/", payload, format="json")
+
+        referrer_sub.refresh_from_db()
+        self.assertEqual(referrer_sub.current_period_end, first_period_end)
+
+    def test_no_reward_when_user_was_not_referred(self):
+        self.subscription.user = self.referred_user
+        self.referred_user.referred_by = None
+        self.referred_user.save()
+        self._activate()
+        self.assertFalse(Subscription.objects.filter(user=self.referrer).exists())

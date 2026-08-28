@@ -32,6 +32,23 @@ if not DEBUG and SECRET_KEY == _INSECURE_SECRET_KEY_DEFAULT:
         "get_random_secret_key; print(get_random_secret_key())\""
     )
 
+# --- Error tracking (Sentry) ------------------------------------------------
+# Free tier (5k events/month): https://sentry.io - create a Django project,
+# copy its DSN into .env. Left blank, this is a complete no-op - no SDK
+# initialization, no network calls, no behavior change.
+SENTRY_DSN = env("SENTRY_DSN", default="")
+if SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        environment="production" if not DEBUG else "development",
+        traces_sample_rate=0.1,
+        # Financial data (invoices, GSTINs, PANs) flows through this app -
+        # never let Sentry capture request bodies/user PII by default.
+        send_default_pii=False,
+    )
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -52,6 +69,7 @@ INSTALLED_APPS = [
     "notifications",
     "search",
     "billing",
+    "marketing",
 ]
 
 MIDDLEWARE = [
@@ -140,6 +158,11 @@ REST_FRAMEWORK = {
         "login": "10/min",
         "register": "5/hour",
         "password_reset": "5/hour",
+        # No-login public pages (shared invoice/report links) - tokens are
+        # long and random, so this is a courtesy cap against scraping/abuse
+        # rather than a defense against guessing them.
+        "public_view": "30/min",
+        "waitlist": "5/hour",
     },
 }
 
@@ -167,6 +190,13 @@ EMAIL_BACKEND = env(
 DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL", default="no-reply@freelancerfinanceos.local"
 )
+# Only read when EMAIL_BACKEND is the SMTP backend (e.g. a free Brevo/Resend
+# SMTP relay) - harmless to leave unset while using the console backend.
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 
 # --- Razorpay ------------------------------------------------------------
 

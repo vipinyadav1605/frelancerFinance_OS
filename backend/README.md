@@ -94,6 +94,7 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
 | `/api/reports/profit-loss/export/` | GET | Phase 3: CSV/PDF export (`?export_format=csv\|pdf`) |
 | `/api/reports/gstr1-prefill/` | GET | Phase 4: GSTR-1 B2B/B2C/Exports bucket summary |
 | `/api/reports/gstr1-prefill/export/` | GET | Phase 4: downloadable GSTR-1 pre-fill worksheet (CSV) |
+| `/api/reports/gstr3b-summary/` | GET | GSTR-3B summary: outward taxable/zero-rated supplies, eligible ITC, net tax payable (`?period_start=&period_end=`) |
 | `/api/recurring-invoices/` | GET/POST | Phase 4: recurring invoice templates |
 | `/api/recurring-invoices/{id}/` | GET/PATCH/DELETE | Phase 4: manage one template |
 | `/api/invoicing/exchange-rate/` | GET | Phase 4: live FX rate suggestion (`?currency=USD\|EUR\|GBP`) |
@@ -103,20 +104,22 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
 | `/api/webhooks/{id}/` | GET/PATCH/DELETE | Phase 5: manage one subscription, incl. recent delivery log |
 | `/api/report-share-links/` | GET/POST | Phase 5: create an expiring read-only report link |
 | `/api/report-share-links/{id}/` | DELETE | Phase 5: revoke a share link |
-| `/api/shared/report/{token}/` | GET | Phase 5: public (no auth) read-only view of a shared report |
+| `/api/shared/report/{token}/` | GET | Phase 5: public (no auth) read-only view of a shared report (rate-limited: 30/min/IP) |
 | `/api/auth/change-password/` | POST | Settings > Security: `{"current_password", "new_password"}` |
 | `/api/auth/change-email/` | POST | Settings > Security: `{"new_email", "current_password"}` |
 | `/api/auth/delete-account/` | POST | Settings > Danger Zone: `{"current_password"}`, permanently deletes everything |
 | `/api/auth/notification-preference/` | GET/PUT | Settings > Notifications: toggle emailed notifications |
 | `/api/auth/onboarding-status/` | GET | drives the Dashboard's first-run setup checklist |
 | `/api/auth/data-export/` | GET | Settings > Danger Zone: zip of clients/invoices/expenses CSVs |
+| `/api/auth/referral/` | GET | growth loop: the user's own `/register?ref=<code>` code + how many people used it |
+| `/api/waitlist/` | POST | public (no auth) landing-page email capture: `{"email"}` (rate-limited: 5/hour/IP) |
 | `/api/notifications/` | GET | in-app notification bell + activity history |
 | `/api/notifications/unread-count/` | GET | for the bell icon's badge |
 | `/api/notifications/{id}/mark-read/` | POST | mark one notification read |
 | `/api/notifications/mark-all-read/` | POST | mark all notifications read |
 | `/api/invoices/` | GET | now paginated (`?page=&page_size=`, default 25/page, max 100) - see Performance |
 | `/api/expenses/` | GET | now paginated, same scheme as invoices |
-| `/api/public/invoice/{token}/` | GET | public (no auth) client-facing invoice view/pay page |
+| `/api/public/invoice/{token}/` | GET | public (no auth) client-facing invoice view/pay page (rate-limited: 30/min/IP) |
 | `/api/search/` | GET | global search across invoices + clients (`?q=`, min 2 chars) |
 | `/api/reports/insights/` | GET | Dashboard chart data: revenue trend, expense breakdown, top clients |
 | `/api/auth/google/` | POST | Google Sign-In: `{"id_token": "..."}` from Google Identity Services |
@@ -227,6 +230,36 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
   `subscription.activated`/`charged`/`halted`/`cancelled`/`completed` events
   to keep the local `Subscription.status` in sync - see
   `SUBSCRIPTION_STATUS_BY_EVENT` in that file.
+- `billing/services/limits.py::is_pro()` also checks `current_period_end`
+  against the current time (when set) - a real paid subscription has this
+  refreshed every billing cycle by the webhook above, so it never falsely
+  expires an active payer. This is what lets a referral reward (below)
+  self-expire without a cron job.
+
+### Referral reward (growth loop)
+
+Every user gets a stable `referral_code` (`User.referral_code`) and a
+shareable link: `<frontend>/register?ref=<code>` (Settings > Billing >
+"Refer a Freelancer"). Registering with `?ref=` sends `referred_by_code` to
+`POST /api/auth/register/`, which sets the new user's `referred_by` FK -
+an unknown/blank code is silently ignored, never a validation error.
+
+When that referred user's subscription first goes `ACTIVE` (see
+`invoicing/views.py::_handle_subscription_event`), their referrer is granted
+30 free days of Pro (`billing/services/referrals.py::grant_referral_reward`,
+stacked on top of an existing active period if they're already Pro) and gets
+an in-app notification. `Subscription.referral_reward_granted` guards this so
+the later monthly `subscription.charged` webhooks don't re-grant it every
+billing cycle.
+
+## Error tracking
+
+Set `SENTRY_DSN` in `.env` (create a free Django project at
+[sentry.io](https://sentry.io), free tier: 5k events/month) to have unhandled
+exceptions reported automatically via `sentry-sdk`. Left blank (the default),
+`config/settings.py` never even imports `sentry_sdk` - no SDK init, no
+network calls, no behavior change. The frontend has its own independent
+`VITE_SENTRY_DSN` (see `frontend/README.md`) - set either, neither, or both.
 
 ## Known limitations (by design, for MVP)
 
@@ -236,7 +269,9 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
 - Overdue-status updates run via a management command, not a background worker
   (matches the "cron first, Celery+Redis later" approach in Document 2).
 - Email uses Django's console backend by default (prints to the terminal) —
-  set a real `EMAIL_BACKEND`/SMTP config in `.env` before going live.
+  set `EMAIL_BACKEND`/`EMAIL_HOST`/`EMAIL_HOST_USER`/`EMAIL_HOST_PASSWORD` in
+  `.env` to a real SMTP relay before going live (see `.env.example` for a
+  free-tier Brevo/Resend walkthrough).
 - Live bank sync (auto-importing transactions) was scoped out of Phase 4 - it
   needs a paid RBI Account Aggregator integration (e.g. Setu/Perfios), which
   costs more per month than this project's total ₹10,000 budget. CSV import

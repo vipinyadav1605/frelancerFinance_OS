@@ -3,6 +3,7 @@ import { type FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { GoogleSignInButton } from "../components/GoogleSignInButton";
 import { useAuth } from "../context/AuthContext";
+import { emailError, requiredError } from "../utils/validation";
 import { extractErrorMessage } from "../utils/errors";
 
 function isTwoFactorRequired(err: unknown): boolean {
@@ -19,12 +20,20 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [needsOtp, setNeedsOtp] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
+
+    if (!needsOtp) {
+      const errors = { email: emailError(email), password: requiredError(password, "Password") };
+      setFieldErrors(errors);
+      if (errors.email || errors.password) return;
+    }
+
     setSubmitting(true);
     try {
       await login(email, password, needsOtp ? otpCode : undefined);
@@ -43,17 +52,27 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
-      <form className="auth-card" onSubmit={handleSubmit}>
+      <form className="auth-card" onSubmit={handleSubmit} noValidate>
         <h1>Freelancer Finance OS</h1>
         <p className="auth-subtitle">Log in to your account</p>
 
         {error && <div className="alert alert-error">{error}</div>}
 
         <label>Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={needsOtp} />
+          <input
+            type="email" value={email} onChange={(e) => setEmail(e.target.value)} disabled={needsOtp}
+            onBlur={() => setFieldErrors((f) => ({ ...f, email: emailError(email) }))}
+            className={fieldErrors.email ? "field-error-input" : ""}
+          />
+          {fieldErrors.email && <span className="field-error-text">{fieldErrors.email}</span>}
         </label>
         <label>Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={needsOtp} />
+          <input
+            type="password" value={password} onChange={(e) => setPassword(e.target.value)} disabled={needsOtp}
+            onBlur={() => setFieldErrors((f) => ({ ...f, password: requiredError(password, "Password") }))}
+            className={fieldErrors.password ? "field-error-input" : ""}
+          />
+          {fieldErrors.password && <span className="field-error-text">{fieldErrors.password}</span>}
         </label>
 
         {needsOtp && (
@@ -66,6 +85,7 @@ export function LoginPage() {
         )}
 
         <button className="btn btn-primary" type="submit" disabled={submitting}>
+          {submitting && <span className="btn-spinner" />}
           {submitting ? "Logging in..." : needsOtp ? "Verify Code" : "Log in"}
         </button>
 

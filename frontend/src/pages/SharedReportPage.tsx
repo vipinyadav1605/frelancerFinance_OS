@@ -22,7 +22,7 @@ export function SharedReportPage() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  if (loading) return <div className="page-loading">Loading...</div>;
+  if (loading) return <div className="page-loading"><span className="spinner-lg" /> Loading...</div>;
 
   if (error || !data) {
     return (
@@ -32,7 +32,7 @@ export function SharedReportPage() {
     );
   }
 
-  const { report, gstr1_summary } = data;
+  const { report, gstr1_summary, gstr3b_summary } = data;
 
   return (
     <div className="page">
@@ -70,14 +70,46 @@ export function SharedReportPage() {
 
       <div className="card">
         <h3>GSTR-1 Pre-fill Summary</h3>
-        <table className="data-table" style={{ marginTop: "0.8rem" }}>
-          <thead><tr><th>Bucket</th><th>Invoices</th><th>Taxable Value</th><th>Tax</th></tr></thead>
-          <tbody>
-            <tr><td>B2B (registered domestic)</td><td>{gstr1_summary.b2b_totals.count}</td><td>{money(gstr1_summary.b2b_totals.taxable_value)}</td><td>{money(gstr1_summary.b2b_totals.tax_amount)}</td></tr>
-            <tr><td>B2C (unregistered domestic)</td><td>{gstr1_summary.b2c_totals.count}</td><td>{money(gstr1_summary.b2c_totals.taxable_value)}</td><td>{money(gstr1_summary.b2c_totals.tax_amount)}</td></tr>
-            <tr><td>Exports (zero-rated under LUT)</td><td>{gstr1_summary.exports_totals.count}</td><td>{money(gstr1_summary.exports_totals.taxable_value)}</td><td>{money(gstr1_summary.exports_totals.tax_amount)}</td></tr>
-          </tbody>
-        </table>
+        <div className="table-scroll" style={{ marginTop: "0.8rem" }}>
+          <table className="data-table">
+            <thead><tr><th>Bucket</th><th>Invoices</th><th>Taxable Value</th><th>Tax</th></tr></thead>
+            <tbody>
+              <tr><td>B2B (registered domestic)</td><td>{gstr1_summary.b2b_totals.count}</td><td>{money(gstr1_summary.b2b_totals.taxable_value)}</td><td>{money(gstr1_summary.b2b_totals.tax_amount)}</td></tr>
+              <tr><td>B2C (unregistered domestic)</td><td>{gstr1_summary.b2c_totals.count}</td><td>{money(gstr1_summary.b2c_totals.taxable_value)}</td><td>{money(gstr1_summary.b2c_totals.tax_amount)}</td></tr>
+              <tr><td>Exports (zero-rated under LUT)</td><td>{gstr1_summary.exports_totals.count}</td><td>{money(gstr1_summary.exports_totals.taxable_value)}</td><td>{money(gstr1_summary.exports_totals.tax_amount)}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>GSTR-3B Summary</h3>
+        <div className="table-scroll" style={{ marginTop: "0.8rem" }}>
+          <table className="data-table">
+            <thead><tr><th>Section</th><th>Taxable Value</th><th>IGST</th><th>CGST</th><th>SGST</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>3.1(a) Outward taxable supplies</td>
+                <td>{money(gstr3b_summary.outward_taxable_supplies.taxable_value)}</td>
+                <td>{money(gstr3b_summary.outward_taxable_supplies.integrated_tax)}</td>
+                <td>{money(gstr3b_summary.outward_taxable_supplies.central_tax)}</td>
+                <td>{money(gstr3b_summary.outward_taxable_supplies.state_tax)}</td>
+              </tr>
+              <tr>
+                <td>3.1(b) Outward zero-rated supplies (exports)</td>
+                <td>{money(gstr3b_summary.outward_zero_rated_supplies.taxable_value)}</td>
+                <td>-</td><td>-</td><td>-</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div className="invoice-totals" style={{ marginLeft: 0, maxWidth: "100%", marginTop: "1rem" }}>
+          <div><span>Eligible ITC (from expenses)</span><span>-{money(gstr3b_summary.eligible_itc)}</span></div>
+          {Number(gstr3b_summary.itc_carried_forward) > 0 && (
+            <div><span>ITC carried forward</span><span>{money(gstr3b_summary.itc_carried_forward)}</span></div>
+          )}
+          <div className="invoice-total-final"><span>Net tax payable</span><span>{money(gstr3b_summary.net_tax_payable)}</span></div>
+        </div>
       </div>
 
       <div className="card">
@@ -95,6 +127,10 @@ export function SharedReportPage() {
         </div>
         <div className="alert alert-info" style={{ marginTop: "0.9rem" }}>{report.income_tax_detail.disclaimer}</div>
       </div>
+
+      <p className="public-page-brand">
+        Reporting by <a href="/">Freelancer Finance OS</a>
+      </p>
     </div>
   );
 }

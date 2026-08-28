@@ -21,6 +21,10 @@ class Subscription(models.Model):
     razorpay_subscription_id = models.CharField(max_length=64, blank=True)
     status = models.CharField(max_length=12, choices=SubscriptionStatus.choices, default=SubscriptionStatus.CANCELLED)
     current_period_end = models.DateTimeField(null=True, blank=True)
+    # Set once this user's first-ever activation has rewarded their referrer
+    # (see billing.services.referrals) - guards against `subscription.charged`
+    # firing the reward again on every later billing cycle.
+    referral_reward_granted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

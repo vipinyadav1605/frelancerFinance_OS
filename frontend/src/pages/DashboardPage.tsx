@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import {
   createReportShareLink, deleteReportShareLink, downloadGstr1Export, downloadProfitLossExport,
-  getGstr1Summary, getProfitLossReport, listReportShareLinks,
+  getGstr1Summary, getGstr3bSummary, getProfitLossReport, listReportShareLinks,
 } from "../api/endpoints";
 import { OnboardingChecklist } from "../components/OnboardingChecklist";
-import type { Gstr1Summary, ProfitLossReport, ReportShareLink } from "../types";
+import { useToast } from "../context/ToastContext";
+import type { Gstr1Summary, Gstr3bSummary, ProfitLossReport, ReportShareLink } from "../types";
 import { extractErrorMessage } from "../utils/errors";
 
 // recharts is the single largest dependency in this app - lazy-loaded so its
@@ -39,11 +40,13 @@ function thisYearRange() {
 type Preset = "month" | "quarter" | "year" | "custom";
 
 export function DashboardPage() {
+  const toast = useToast();
   const [preset, setPreset] = useState<Preset>("month");
   const [periodStart, setPeriodStart] = useState(thisMonthRange().start);
   const [periodEnd, setPeriodEnd] = useState(thisMonthRange().end);
   const [report, setReport] = useState<ProfitLossReport | null>(null);
   const [gstr1, setGstr1] = useState<Gstr1Summary | null>(null);
+  const [gstr3b, setGstr3b] = useState<Gstr3bSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
@@ -68,8 +71,9 @@ export function DashboardPage() {
     Promise.all([
       getProfitLossReport(periodStart, periodEnd),
       getGstr1Summary(periodStart, periodEnd),
+      getGstr3bSummary(periodStart, periodEnd),
     ])
-      .then(([reportData, gstr1Data]) => { setReport(reportData); setGstr1(gstr1Data); })
+      .then(([reportData, gstr1Data, gstr3bData]) => { setReport(reportData); setGstr1(gstr1Data); setGstr3b(gstr3bData); })
       .catch((err) => setError(extractErrorMessage(err, "Could not load the report.")))
       .finally(() => setLoading(false));
   }, [periodStart, periodEnd]);
@@ -87,6 +91,7 @@ export function DashboardPage() {
       await createReportShareLink(periodStart, periodEnd, shareLabel, shareExpiryDays);
       setShareLabel("");
       loadShareLinks();
+      toast.success("Share link created.");
     } catch (err) {
       setShareError(extractErrorMessage(err, "Could not create the share link."));
     } finally {
@@ -98,6 +103,7 @@ export function DashboardPage() {
     if (!confirm("Revoke this share link? It will stop working immediately.")) return;
     await deleteReportShareLink(id);
     loadShareLinks();
+    toast.success("Share link revoked.");
   }
 
   function shareUrl(token: string) {
@@ -107,8 +113,9 @@ export function DashboardPage() {
   async function copyShareUrl(token: string) {
     try {
       await navigator.clipboard.writeText(shareUrl(token));
+      toast.success("Link copied to clipboard.");
     } catch {
-      // Clipboard API can fail (e.g. insecure context) - the link is still visible to copy manually.
+      toast.error("Could not copy the link - your browser may be blocking clipboard access.");
     }
   }
 
@@ -143,9 +150,11 @@ export function DashboardPage() {
         </div>
         <div className="form-actions">
           <button className="btn btn-secondary" onClick={() => handleExport("csv")} disabled={exporting !== null}>
+            {exporting === "csv" && <span className="btn-spinner" />}
             {exporting === "csv" ? "Exporting..." : "Export CSV"}
           </button>
           <button className="btn btn-secondary" onClick={() => handleExport("pdf")} disabled={exporting !== null}>
+            {exporting === "pdf" && <span className="btn-spinner" />}
             {exporting === "pdf" ? "Exporting..." : "Export PDF"}
           </button>
         </div>
@@ -165,7 +174,7 @@ export function DashboardPage() {
       {error && <div className="alert alert-error">{error}</div>}
 
       {loading || !report ? (
-        <div className="page-loading">Loading...</div>
+        <div className="page-loading"><span className="spinner-lg" /> Loading...</div>
       ) : (
         <>
           <div className="dashboard-cards">
@@ -183,7 +192,7 @@ export function DashboardPage() {
             </div>
           </div>
 
-          <Suspense fallback={<div className="page-loading">Loading charts...</div>}>
+          <Suspense fallback={<div className="page-loading"><span className="spinner-lg" /> Loading charts...</div>}>
             <DashboardCharts periodStart={periodStart} periodEnd={periodEnd} />
           </Suspense>
 
@@ -208,27 +217,68 @@ export function DashboardPage() {
                   </p>
                 </div>
                 <button className="btn btn-secondary" onClick={handleGstr1Export} disabled={exportingGstr1}>
+                  {exportingGstr1 && <span className="btn-spinner" />}
                   {exportingGstr1 ? "Exporting..." : "Export CSV"}
                 </button>
               </div>
-              <table className="data-table" style={{ marginTop: "0.8rem" }}>
-                <thead>
-                  <tr><th>Bucket</th><th>Invoices</th><th>Taxable Value</th><th>Tax</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>B2B (registered domestic)</td><td>{gstr1.b2b_totals.count}</td><td>{money(gstr1.b2b_totals.taxable_value)}</td><td>{money(gstr1.b2b_totals.tax_amount)}</td></tr>
-                  <tr><td>B2C (unregistered domestic)</td><td>{gstr1.b2c_totals.count}</td><td>{money(gstr1.b2c_totals.taxable_value)}</td><td>{money(gstr1.b2c_totals.tax_amount)}</td></tr>
-                  <tr><td>Exports (zero-rated under LUT)</td><td>{gstr1.exports_totals.count}</td><td>{money(gstr1.exports_totals.taxable_value)}</td><td>{money(gstr1.exports_totals.tax_amount)}</td></tr>
-                </tbody>
-              </table>
+              <div className="table-scroll" style={{ marginTop: "0.8rem" }}>
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Bucket</th><th>Invoices</th><th>Taxable Value</th><th>Tax</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>B2B (registered domestic)</td><td>{gstr1.b2b_totals.count}</td><td>{money(gstr1.b2b_totals.taxable_value)}</td><td>{money(gstr1.b2b_totals.tax_amount)}</td></tr>
+                    <tr><td>B2C (unregistered domestic)</td><td>{gstr1.b2c_totals.count}</td><td>{money(gstr1.b2c_totals.taxable_value)}</td><td>{money(gstr1.b2c_totals.tax_amount)}</td></tr>
+                    <tr><td>Exports (zero-rated under LUT)</td><td>{gstr1.exports_totals.count}</td><td>{money(gstr1.exports_totals.taxable_value)}</td><td>{money(gstr1.exports_totals.tax_amount)}</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {gstr3b && (
+            <div className="card">
+              <h3>GSTR-3B Summary</h3>
+              <p className="page-subtitle">
+                The self-assessed summary return, based on the same accrual-basis figures as the
+                GSTR-1 worksheet above &mdash; a working paper, not a filed return.
+              </p>
+              <div className="table-scroll" style={{ marginTop: "0.8rem" }}>
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Section</th><th>Taxable Value</th><th>IGST</th><th>CGST</th><th>SGST</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>3.1(a) Outward taxable supplies</td>
+                      <td>{money(gstr3b.outward_taxable_supplies.taxable_value)}</td>
+                      <td>{money(gstr3b.outward_taxable_supplies.integrated_tax)}</td>
+                      <td>{money(gstr3b.outward_taxable_supplies.central_tax)}</td>
+                      <td>{money(gstr3b.outward_taxable_supplies.state_tax)}</td>
+                    </tr>
+                    <tr>
+                      <td>3.1(b) Outward zero-rated supplies (exports)</td>
+                      <td>{money(gstr3b.outward_zero_rated_supplies.taxable_value)}</td>
+                      <td>-</td><td>-</td><td>-</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="invoice-totals" style={{ marginLeft: 0, maxWidth: "100%", marginTop: "1rem" }}>
+                <div><span>Eligible ITC (from expenses)</span><span>-{money(gstr3b.eligible_itc)}</span></div>
+                {Number(gstr3b.itc_carried_forward) > 0 && (
+                  <div><span>ITC carried forward</span><span>{money(gstr3b.itc_carried_forward)}</span></div>
+                )}
+                <div className="invoice-total-final"><span>Net tax payable</span><span>{money(gstr3b.net_tax_payable)}</span></div>
+              </div>
             </div>
           )}
 
           <div className="card">
             <h3>Share with your CA</h3>
             <p className="page-subtitle">
-              Create a read-only link to this exact report (P&amp;L + GSTR-1) &mdash; no account needed
-              to view it, and it expires automatically.
+              Create a read-only link to this exact report (P&amp;L + GSTR-1 + GSTR-3B) &mdash; no
+              account needed to view it, and it expires automatically.
             </p>
             {shareError && <div className="alert alert-error">{shareError}</div>}
             <div className="form-row" style={{ alignItems: "flex-end" }}>
@@ -244,28 +294,31 @@ export function DashboardPage() {
                 </select>
               </label>
               <button className="btn btn-primary" onClick={handleCreateShareLink} disabled={sharing}>
+                {sharing && <span className="btn-spinner" />}
                 {sharing ? "Creating..." : "Create Link"}
               </button>
             </div>
 
             {shareLinks.length > 0 && (
-              <table className="data-table" style={{ marginTop: "1rem" }}>
-                <thead><tr><th>Label</th><th>Period</th><th>Expires</th><th></th></tr></thead>
-                <tbody>
-                  {shareLinks.map((link) => (
-                    <tr key={link.id}>
-                      <td>{link.label || "-"}</td>
-                      <td>{link.period_start} to {link.period_end}</td>
-                      <td>{new Date(link.expires_at).toLocaleDateString()}</td>
-                      <td>
-                        <button className="btn-link" onClick={() => copyShareUrl(link.token)}>Copy Link</button>
-                        {" "}&middot;{" "}
-                        <button className="btn-link" onClick={() => handleDeleteShareLink(link.id)}>Revoke</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="table-scroll" style={{ marginTop: "1rem" }}>
+                <table className="data-table">
+                  <thead><tr><th>Label</th><th>Period</th><th>Expires</th><th></th></tr></thead>
+                  <tbody>
+                    {shareLinks.map((link) => (
+                      <tr key={link.id}>
+                        <td>{link.label || "-"}</td>
+                        <td>{link.period_start} to {link.period_end}</td>
+                        <td>{new Date(link.expires_at).toLocaleDateString()}</td>
+                        <td>
+                          <button className="btn-link" onClick={() => copyShareUrl(link.token)}>Copy Link</button>
+                          {" "}&middot;{" "}
+                          <button className="btn-link" onClick={() => handleDeleteShareLink(link.id)}>Revoke</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
 

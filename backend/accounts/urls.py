@@ -4,9 +4,9 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     BusinessProfileView, ChangeEmailView, ChangePasswordView, DataExportView,
     DeleteAccountView, GoogleLoginView, LogoutView, MeView, NotificationPreferenceView,
-    OnboardingStatusView, PasswordResetConfirmView, PasswordResetRequestView, RegisterView,
-    ThrottledTokenObtainPairView, TwoFactorConfirmView, TwoFactorDisableView, TwoFactorSetupView,
-    TwoFactorStatusView,
+    OnboardingStatusView, PasswordResetConfirmView, PasswordResetRequestView, ReferralStatusView,
+    RegisterView, ThrottledTokenObtainPairView, TwoFactorConfirmView, TwoFactorDisableView,
+    TwoFactorSetupView, TwoFactorStatusView,
 )
 
 urlpatterns = [
@@ -27,6 +27,7 @@ urlpatterns = [
     path("2fa/setup/", TwoFactorSetupView.as_view(), name="2fa-setup"),
     path("2fa/confirm/", TwoFactorConfirmView.as_view(), name="2fa-confirm"),
     path("2fa/disable/", TwoFactorDisableView.as_view(), name="2fa-disable"),
+    path("referral/", ReferralStatusView.as_view(), name="referral-status"),
     path("me/", MeView.as_view(), name="auth-me"),
     path("business-profile/", BusinessProfileView.as_view(), name="business-profile"),
 ]

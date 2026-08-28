@@ -192,6 +192,26 @@ export interface Gstr1Summary {
   exports_totals: GstrBucketTotals;
 }
 
+export interface Gstr3bSummary {
+  period_start: string;
+  period_end: string;
+  outward_taxable_supplies: {
+    taxable_value: string;
+    integrated_tax: string;
+    central_tax: string;
+    state_tax: string;
+  };
+  outward_zero_rated_supplies: { taxable_value: string };
+  eligible_itc: string;
+  net_tax_payable: string;
+  itc_carried_forward: string;
+}
+
+export interface ReferralStatus {
+  referral_code: string;
+  referral_count: number;
+}
+
 export interface ApiKey {
   id: number;
   name: string;
@@ -245,6 +265,7 @@ export interface SharedReport {
     b2c_totals: GstrBucketTotals;
     exports_totals: GstrBucketTotals;
   };
+  gstr3b_summary: Gstr3bSummary;
 }
 
 export interface InvoiceDetail {

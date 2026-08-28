@@ -7,7 +7,16 @@ from ..models import FREE_TIER_MONTHLY_INVOICE_LIMIT
 
 def is_pro(user) -> bool:
     subscription = getattr(user, "subscription", None)
-    return subscription is not None and subscription.is_pro
+    if subscription is None or not subscription.is_pro:
+        return False
+    # A real paid subscription's current_period_end is refreshed every
+    # billing cycle by the Razorpay webhook (see invoicing/views.py), so this
+    # never falsely expires an actively-paying user. It does, however, let a
+    # referral-reward grant (see services/referrals.py) self-expire without
+    # any extra cron job.
+    if subscription.current_period_end is None:
+        return True
+    return subscription.current_period_end >= timezone.now()
 
 
 def invoices_created_this_month(user) -> int:

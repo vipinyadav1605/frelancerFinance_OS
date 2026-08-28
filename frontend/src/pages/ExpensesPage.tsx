@@ -3,8 +3,10 @@ import {
   createExpense, createExpenseCategory, deleteExpense, importBankStatementCsv, listExpenseCategories,
   listExpenses, type ImportCsvResult,
 } from "../api/endpoints";
+import { useToast } from "../context/ToastContext";
 import type { Expense, ExpenseCategory } from "../types";
 import { extractErrorMessage } from "../utils/errors";
+import { positiveNumberError, requiredError } from "../utils/validation";
 
 function money(amount: string) {
   return `₹${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
@@ -15,8 +17,10 @@ function todayISO() {
 }
 
 const emptyExpenseForm = { category: "", vendor_name: "", amount: "", gst_paid: "", expense_date: todayISO(), notes: "" };
+const NO_ERRORS = { vendor_name: "", amount: "", category: "" };
 
 export function ExpensesPage() {
+  const toast = useToast();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [count, setCount] = useState(0);
   const [hasNext, setHasNext] = useState(false);
@@ -30,6 +34,7 @@ export function ExpensesPage() {
 
   const [showManualForm, setShowManualForm] = useState(false);
   const [form, setForm] = useState(emptyExpenseForm);
+  const [fieldErrors, setFieldErrors] = useState(NO_ERRORS);
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [manualError, setManualError] = useState("");
@@ -91,11 +96,15 @@ export function ExpensesPage() {
   async function handleBulkDelete() {
     if (selected.size === 0) return;
     if (!confirm(`Delete ${selected.size} expense(s)? This cannot be undone.`)) return;
+    const deleteCount = selected.size;
     setBulkDeleting(true);
     try {
       await Promise.all(Array.from(selected).map((id) => deleteExpense(id)));
       setSelected(new Set());
       loadExpenses();
+      toast.success(`Deleted ${deleteCount} expense${deleteCount === 1 ? "" : "s"}.`);
+    } catch {
+      toast.error("Could not delete all selected expenses.");
     } finally {
       setBulkDeleting(false);
     }
@@ -107,12 +116,24 @@ export function ExpensesPage() {
     setCategories((prev) => [...prev, category].sort((a, b) => a.name.localeCompare(b.name)));
     setForm((f) => ({ ...f, category: String(category.id) }));
     setNewCategoryName("");
+    toast.success(`Category "${category.name}" added.`);
+  }
+
+  function validateManual() {
+    return {
+      vendor_name: requiredError(form.vendor_name, "Vendor"),
+      amount: positiveNumberError(form.amount, "Amount"),
+      category: requiredError(form.category, "Category"),
+    };
   }
 
   async function handleManualSubmit(e: FormEvent) {
     e.preventDefault();
     setManualError("");
-    if (!form.category) { setManualError("Please select a category."); return; }
+    const errors = validateManual();
+    setFieldErrors(errors);
+    if (Object.values(errors).some(Boolean)) return;
+
     setSavingManual(true);
     try {
       await createExpense({
@@ -125,9 +146,11 @@ export function ExpensesPage() {
         receipt_file: receiptFile ?? undefined,
       });
       setForm(emptyExpenseForm);
+      setFieldErrors(NO_ERRORS);
       setReceiptFile(null);
       setShowManualForm(false);
       loadExpenses();
+      toast.success("Expense saved.");
     } catch (err) {
       setManualError(extractErrorMessage(err, "Could not save expense."));
     } finally {
@@ -164,6 +187,7 @@ export function ExpensesPage() {
       const result = await importBankStatementCsv(csvFile, dateColumn, descriptionColumn, amountColumn);
       setImportResult(result);
       loadExpenses();
+      toast.success(`Imported ${result.import.imported_count} expense(s).`);
     } catch (err) {
       setImportError(extractErrorMessage(err, "Could not import this CSV file."));
     } finally {
@@ -189,14 +213,24 @@ export function ExpensesPage() {
       </div>
 
       {showManualForm && (
-        <form className="card form" onSubmit={handleManualSubmit}>
+        <form className="card form" onSubmit={handleManualSubmit} noValidate>
           {manualError && <div className="alert alert-error">{manualError}</div>}
           <label>Vendor
-            <input value={form.vendor_name} onChange={(e) => setForm((f) => ({ ...f, vendor_name: e.target.value }))} required />
+            <input
+              value={form.vendor_name} onChange={(e) => setForm((f) => ({ ...f, vendor_name: e.target.value }))}
+              onBlur={() => setFieldErrors((f) => ({ ...f, vendor_name: requiredError(form.vendor_name, "Vendor") }))}
+              className={fieldErrors.vendor_name ? "field-error-input" : ""}
+            />
+            {fieldErrors.vendor_name && <span className="field-error-text">{fieldErrors.vendor_name}</span>}
           </label>
           <div className="form-row">
             <label>Amount
-              <input type="number" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))} required />
+              <input
+                type="number" step="0.01" value={form.amount} onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+                onBlur={() => setFieldErrors((f) => ({ ...f, amount: positiveNumberError(form.amount, "Amount") }))}
+                className={fieldErrors.amount ? "field-error-input" : ""}
+              />
+              {fieldErrors.amount && <span className="field-error-text">{fieldErrors.amount}</span>}
             </label>
             <label>Date
               <input type="date" value={form.expense_date} onChange={(e) => setForm((f) => ({ ...f, expense_date: e.target.value }))} required />
@@ -207,10 +241,15 @@ export function ExpensesPage() {
           </div>
           <div className="form-row">
             <label>Category
-              <select value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))} required>
+              <select
+                value={form.category} onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+                onBlur={() => setFieldErrors((f) => ({ ...f, category: requiredError(form.category, "Category") }))}
+                className={fieldErrors.category ? "field-error-input" : ""}
+              >
                 <option value="">Select category</option>
                 {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+              {fieldErrors.category && <span className="field-error-text">{fieldErrors.category}</span>}
             </label>
             <label>Add new category
               <span className="form-inline" style={{ gap: "0.5rem" }}>
@@ -226,6 +265,7 @@ export function ExpensesPage() {
             <input type="file" onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)} />
           </label>
           <button className="btn btn-primary" type="submit" disabled={savingManual}>
+            {savingManual && <span className="btn-spinner" />}
             {savingManual ? "Saving..." : "Save Expense"}
           </button>
         </form>
@@ -263,6 +303,7 @@ export function ExpensesPage() {
                 imported as an expense. Rows we can't read are skipped, not guessed.
               </div>
               <button className="btn btn-primary" type="submit" disabled={importing}>
+                {importing && <span className="btn-spinner" />}
                 {importing ? "Importing..." : "Import"}
               </button>
             </>
@@ -290,37 +331,40 @@ export function ExpensesPage() {
         <div className="bulk-toolbar">
           <span>{selected.size} selected</span>
           <button className="btn btn-secondary" onClick={handleBulkDelete} disabled={bulkDeleting} style={{ color: "var(--red)", borderColor: "var(--red)" }}>
+            {bulkDeleting && <span className="btn-spinner" />}
             {bulkDeleting ? "Deleting..." : "Delete Selected"}
           </button>
         </div>
       )}
 
       {loading ? (
-        <div className="page-loading">Loading...</div>
+        <div className="page-loading"><span className="spinner-lg" /> Loading...</div>
       ) : expenses.length === 0 ? (
         <div className="empty-state">No expenses yet. Add one manually or import a bank statement.</div>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th><input type="checkbox" checked={selected.size === expenses.length} onChange={toggleSelectAll} /></th>
-              <th>Date</th><th>Vendor</th><th>Category</th><th>Amount</th><th>GST Paid</th><th>Source</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expenses.map((exp) => (
-              <tr key={exp.id}>
-                <td><input type="checkbox" checked={selected.has(exp.id)} onChange={() => toggleSelected(exp.id)} /></td>
-                <td>{exp.expense_date}</td>
-                <td>{exp.vendor_name}</td>
-                <td>{exp.category_name}</td>
-                <td>{money(exp.amount)}</td>
-                <td>{money(exp.gst_paid)}</td>
-                <td><span className={`badge ${exp.source === "manual" ? "badge-blue" : "badge-grey"}`}>{exp.source === "manual" ? "Manual" : "CSV"}</span></td>
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th><input type="checkbox" checked={selected.size === expenses.length} onChange={toggleSelectAll} /></th>
+                <th>Date</th><th>Vendor</th><th>Category</th><th>Amount</th><th>GST Paid</th><th>Source</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {expenses.map((exp) => (
+                <tr key={exp.id}>
+                  <td><input type="checkbox" checked={selected.has(exp.id)} onChange={() => toggleSelected(exp.id)} /></td>
+                  <td>{exp.expense_date}</td>
+                  <td>{exp.vendor_name}</td>
+                  <td>{exp.category_name}</td>
+                  <td>{money(exp.amount)}</td>
+                  <td>{money(exp.gst_paid)}</td>
+                  <td><span className={`badge ${exp.source === "manual" ? "badge-blue" : "badge-grey"}`}>{exp.source === "manual" ? "Manual" : "CSV"}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {!loading && count > 0 && (

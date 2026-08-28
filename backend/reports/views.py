@@ -2,6 +2,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import permissions, status, viewsets
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from expenses.models import Expense
@@ -13,6 +14,7 @@ from .serializers import (
 )
 from .services.export import export_gstr1_csv, export_profit_loss_csv, export_profit_loss_pdf
 from .services.gstr1 import compute_gstr1_prefill
+from .services.gstr3b import compute_gstr3b_summary
 from .services.insights import expense_breakdown_by_category, monthly_revenue_trend, top_clients_by_revenue
 from .services.profit_loss import compute_profit_loss
 
@@ -97,6 +99,19 @@ class Gstr1ExportView(APIView):
         return response
 
 
+class Gstr3bSummaryView(APIView):
+    """GSTR-3B pre-fill summary: outward taxable/zero-rated supplies, eligible ITC, net tax payable."""
+
+    def get(self, request):
+        query = PeriodQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+
+        data = compute_gstr3b_summary(
+            request.user, query.validated_data["period_start"], query.validated_data["period_end"]
+        )
+        return Response(data)
+
+
 class DashboardInsightsView(APIView):
     """Chart data for the Dashboard: revenue trend, expense breakdown, top clients."""
 
@@ -142,6 +157,8 @@ class SharedReportView(APIView):
 
     permission_classes = [permissions.AllowAny]
     authentication_classes = []
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "public_view"
 
     def get(self, request, token):
         link = get_object_or_404(ReportShareLink, token=token)
@@ -150,6 +167,7 @@ class SharedReportView(APIView):
 
         estimate = compute_profit_loss(link.user, link.period_start, link.period_end)
         gstr1 = compute_gstr1_prefill(link.user, link.period_start, link.period_end)
+        gstr3b = compute_gstr3b_summary(link.user, link.period_start, link.period_end)
         return Response({
             "label": link.label,
             "business_name": getattr(link.user.business_profile, "business_name", ""),
@@ -159,4 +177,5 @@ class SharedReportView(APIView):
                 "b2c_totals": gstr1["b2c_totals"],
                 "exports_totals": gstr1["exports_totals"],
             },
+            "gstr3b_summary": gstr3b,
         })
