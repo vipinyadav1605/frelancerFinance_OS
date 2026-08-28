@@ -32,6 +32,7 @@ App runs at `http://localhost:5173`. The backend must be running at the URL in
 | `/recurring-invoices` | Phase 4: manage recurring invoice templates (weekly/monthly/quarterly, optional auto-send) |
 | `/integrations` | Phase 5: manage API keys and outgoing webhook subscriptions |
 | `/shared/:token` | Phase 5: public, no-login read-only report view (for a CA/collaborator) |
+| `/settings` | Consolidated hub (tabs: Profile, Business, Security, Notifications, Integrations, Danger Zone) - reuses `BusinessProfilePage`/`IntegrationsPage` as tab content rather than duplicating them. `/business-profile` and `/integrations` still work standalone. |
 
 ## Notes
 
@@ -47,3 +48,18 @@ App runs at `http://localhost:5173`. The backend must be running at the URL in
   `public/sw.js`, registered in `main.tsx`) - "Add to Home Screen" on mobile
   gives an app-like icon/window without a separate native codebase. The
   service worker only caches the static shell, never `/api/` responses.
+- **Dark mode**: toggled in Settings > Profile, persisted in `localStorage`
+  (`src/utils/theme.ts`), applied via a `data-theme` attribute on `<html>` -
+  the whole design system is CSS custom properties (`index.css`), so the
+  toggle just swaps the token values, no per-component dark-mode logic.
+- **Notification bell** (`components/NotificationBell.tsx`) polls
+  `/notifications/unread-count/` every 60s and lists recent notifications on
+  click - not a websocket/push system, just periodic polling (adequate at
+  this scale; revisit if real-time matters later).
+- **Onboarding checklist** (`components/OnboardingChecklist.tsx`) shows on
+  the Dashboard until business profile + a client + a sent invoice all exist,
+  or until manually dismissed (remembered in `localStorage`).
+- **Bulk actions**: multi-select + "mark selected as paid" on the invoice
+  list, multi-select + "delete selected" on the expense list. Implemented as
+  parallel calls to the existing single-item endpoints (`Promise.all`), not
+  new bulk-specific backend endpoints - fine at solo-freelancer data volumes.

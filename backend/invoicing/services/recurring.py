@@ -7,6 +7,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from invoicing.models import InvoiceStatus, RecurringFrequency, RecurringInvoiceProfile
+from notifications.services import notify
 
 from .invoices import create_invoice
 from .notifications import send_invoice_email
@@ -85,5 +86,10 @@ def generate_due_invoices(*, today=None):
         profile.next_run_date = next_run_after(profile.next_run_date, profile.frequency)
         profile.save(update_fields=["last_generated_invoice", "next_run_date", "updated_at"])
         created.append(invoice)
+        notify(
+            profile.user, "recurring_invoice_generated",
+            f"Invoice {invoice.invoice_number} was generated for {invoice.client_name_snapshot}.",
+            link_path=f"/invoices/{invoice.id}",
+        )
 
     return created

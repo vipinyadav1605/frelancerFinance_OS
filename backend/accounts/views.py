@@ -1,3 +1,4 @@
+from django.http import HttpResponse
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
@@ -6,11 +7,18 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from .models import BusinessProfile
+from clients.models import Client
+from invoicing.models import Invoice, InvoiceStatus
+
+from .models import BusinessProfile, NotificationPreference
 from .serializers import (
-    BusinessProfileSerializer, LogoutSerializer, PasswordResetConfirmSerializer,
-    PasswordResetRequestSerializer, RegisterSerializer, UserSerializer,
+    BusinessProfileSerializer, ChangeEmailSerializer, ChangePasswordSerializer,
+    DeleteAccountSerializer, LogoutSerializer, NotificationPreferenceSerializer,
+    OnboardingStatusSerializer, PasswordResetConfirmSerializer, PasswordResetRequestSerializer,
+    RegisterSerializer, UserSerializer,
 )
+from .services.account_deletion import delete_user_account
+from .services.data_export import export_all_user_data_zip
 from .services.password_reset import reset_password_with_token, send_password_reset_email
 
 
@@ -103,3 +111,66 @@ class BusinessProfileView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save(user=request.user)
         return Response(serializer.data)
+
+
+class ChangePasswordView(APIView):
+    def post(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        request.user.set_password(serializer.validated_data["new_password"])
+        request.user.save(update_fields=["password"])
+        return Response({"detail": "Password changed."})
+
+
+class ChangeEmailView(APIView):
+    def post(self, request):
+        serializer = ChangeEmailSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        request.user.email = serializer.validated_data["new_email"]
+        request.user.save(update_fields=["email"])
+        return Response(UserSerializer(request.user).data)
+
+
+class DeleteAccountView(APIView):
+    def post(self, request):
+        serializer = DeleteAccountSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        delete_user_account(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NotificationPreferenceView(APIView):
+    def get(self, request):
+        preference, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        return Response(NotificationPreferenceSerializer(preference).data)
+
+    def put(self, request):
+        preference, _ = NotificationPreference.objects.get_or_create(user=request.user)
+        serializer = NotificationPreferenceSerializer(preference, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class OnboardingStatusView(APIView):
+    """Drives the Dashboard's first-run setup checklist."""
+
+    def get(self, request):
+        invoices = Invoice.objects.filter(user=request.user)
+        data = {
+            "has_business_profile": BusinessProfile.objects.filter(user=request.user).exists(),
+            "has_client": Client.objects.filter(user=request.user).exists(),
+            "has_invoice": invoices.exists(),
+            "has_sent_invoice": invoices.exclude(status=InvoiceStatus.DRAFT).exists(),
+        }
+        return Response(OnboardingStatusSerializer(data).data)
+
+
+class DataExportView(APIView):
+    """Settings > Danger Zone: download everything as a zip of CSVs."""
+
+    def get(self, request):
+        content = export_all_user_data_zip(request.user)
+        response = HttpResponse(content, content_type="application/zip")
+        response["Content-Disposition"] = 'attachment; filename="freelancer-finance-os-export.zip"'
+        return response

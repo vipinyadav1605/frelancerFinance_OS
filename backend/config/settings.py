@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "expenses",
     "reports",
     "integrations",
+    "notifications",
 ]
 
 MIDDLEWARE = [

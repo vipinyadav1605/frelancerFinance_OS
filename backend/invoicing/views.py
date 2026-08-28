@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from integrations.services.webhooks import send_webhook_event
+from notifications.services import notify
 
 from .models import Invoice, InvoiceStatus, Payment, PaymentMethod, PaymentStatus, RecurringInvoiceProfile
 from .serializers import (
@@ -110,6 +111,10 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice.paid_at = timezone.now()
         invoice.save()
         send_webhook_event(invoice.user, "invoice.paid", _invoice_webhook_payload(invoice))
+        notify(
+            invoice.user, "invoice_paid", f"Invoice {invoice.invoice_number} was marked paid.",
+            link_path=f"/invoices/{invoice.id}",
+        )
         return Response(InvoiceDetailSerializer(invoice, context={"request": request}).data)
 
     @action(detail=True, methods=["post"], url_path="regenerate-pdf")
@@ -191,5 +196,9 @@ class RazorpayWebhookView(APIView):
                 invoice.save()
                 send_payment_confirmation_email(invoice)
                 send_webhook_event(invoice.user, "invoice.paid", _invoice_webhook_payload(invoice))
+                notify(
+                    invoice.user, "invoice_paid", f"Invoice {invoice.invoice_number} was paid via Razorpay.",
+                    link_path=f"/invoices/{invoice.id}",
+                )
 
         return Response({"status": "ok"})

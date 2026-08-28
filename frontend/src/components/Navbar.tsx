@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { NotificationBell } from "./NotificationBell";
 
 export function Navbar() {
   const { user, logout } = useAuth();
@@ -21,10 +22,10 @@ export function Navbar() {
         <Link to="/recurring-invoices">Recurring</Link>
         <Link to="/expenses">Expenses</Link>
         <Link to="/clients">Clients</Link>
-        <Link to="/integrations">Integrations</Link>
-        <Link to="/business-profile">Business Profile</Link>
+        <Link to="/settings">Settings</Link>
       </div>
       <div className="navbar-user">
+        <NotificationBell />
         <span>{user.email}</span>
         <button className="btn btn-link" onClick={handleLogout}>Log out</button>
       </div>

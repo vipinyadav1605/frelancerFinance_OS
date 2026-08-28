@@ -1,9 +1,10 @@
 import { apiClient, tokenStorage } from "./client";
 import type {
-  ApiKey, ApiKeyCreated, BankStatementImport, BusinessProfile, Client, Expense, ExpenseCategory,
-  Gstr1Summary, InvoiceDetail, InvoiceListItem, InvoiceItemInput, InvoiceStatus, Currency,
-  ProfitLossReport, RecurringInvoiceProfile, RecurringInvoiceItemInput, RecurringFrequency,
-  ReportShareLink, SharedReport, User, WebhookEvent, WebhookSubscription,
+  ApiKey, ApiKeyCreated, AppNotification, BankStatementImport, BusinessProfile, Client, Expense,
+  ExpenseCategory, Gstr1Summary, InvoiceDetail, InvoiceListItem, InvoiceItemInput, InvoiceStatus,
+  Currency, NotificationPreference, OnboardingStatus, ProfitLossReport, RecurringInvoiceProfile,
+  RecurringInvoiceItemInput, RecurringFrequency, ReportShareLink, SharedReport, User, WebhookEvent,
+  WebhookSubscription,
 } from "../types";
 
 export async function login(email: string, password: string) {
@@ -38,6 +39,66 @@ export async function requestPasswordReset(email: string): Promise<void> {
 
 export async function confirmPasswordReset(uid: string, token: string, newPassword: string): Promise<void> {
   await apiClient.post("/auth/password-reset-confirm/", { uid, token, new_password: newPassword });
+}
+
+export async function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  await apiClient.post("/auth/change-password/", { current_password: currentPassword, new_password: newPassword });
+}
+
+export async function changeEmail(newEmail: string, currentPassword: string): Promise<User> {
+  const { data } = await apiClient.post("/auth/change-email/", {
+    new_email: newEmail, current_password: currentPassword,
+  });
+  return data;
+}
+
+export async function deleteAccount(currentPassword: string): Promise<void> {
+  await apiClient.post("/auth/delete-account/", { current_password: currentPassword });
+}
+
+export async function getNotificationPreference(): Promise<NotificationPreference> {
+  const { data } = await apiClient.get("/auth/notification-preference/");
+  return data;
+}
+
+export async function updateNotificationPreference(prefs: NotificationPreference): Promise<NotificationPreference> {
+  const { data } = await apiClient.put("/auth/notification-preference/", prefs);
+  return data;
+}
+
+export async function getOnboardingStatus(): Promise<OnboardingStatus> {
+  const { data } = await apiClient.get("/auth/onboarding-status/");
+  return data;
+}
+
+export async function downloadDataExport(): Promise<void> {
+  const response = await apiClient.get("/auth/data-export/", { responseType: "blob" });
+  const blobUrl = window.URL.createObjectURL(response.data as Blob);
+  const link = document.createElement("a");
+  link.href = blobUrl;
+  link.download = "freelancer-finance-os-export.zip";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}
+
+export async function listNotifications(): Promise<AppNotification[]> {
+  const { data } = await apiClient.get("/notifications/");
+  return data;
+}
+
+export async function getUnreadNotificationCount(): Promise<number> {
+  const { data } = await apiClient.get("/notifications/unread-count/");
+  return data.unread_count;
+}
+
+export async function markNotificationRead(id: number): Promise<void> {
+  await apiClient.post(`/notifications/${id}/mark-read/`);
+}
+
+export async function markAllNotificationsRead(): Promise<void> {
+  await apiClient.post("/notifications/mark-all-read/");
 }
 
 export async function getMe(): Promise<User> {
@@ -151,6 +212,10 @@ export async function createExpense(payload: CreateExpensePayload): Promise<Expe
     headers: { "Content-Type": "multipart/form-data" },
   });
   return data;
+}
+
+export async function deleteExpense(id: number): Promise<void> {
+  await apiClient.delete(`/expenses/${id}/`);
 }
 
 export async function listBankStatementImports(): Promise<BankStatementImport[]> {

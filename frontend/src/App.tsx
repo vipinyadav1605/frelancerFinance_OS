@@ -15,6 +15,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { RecurringInvoicesPage } from "./pages/RecurringInvoicesPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { ResetPasswordPage } from "./pages/ResetPasswordPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { SharedReportPage } from "./pages/SharedReportPage";
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
         <Route path="/invoices/:id" element={<ProtectedRoute><InvoiceDetailPage /></ProtectedRoute>} />
         <Route path="/recurring-invoices" element={<ProtectedRoute><RecurringInvoicesPage /></ProtectedRoute>} />
         <Route path="/integrations" element={<ProtectedRoute><IntegrationsPage /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </>

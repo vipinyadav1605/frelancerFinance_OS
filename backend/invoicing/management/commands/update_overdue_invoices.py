@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from integrations.services.webhooks import send_webhook_event
 from invoicing.models import Invoice, InvoiceStatus
+from notifications.services import notify
 
 
 class Command(BaseCommand):
@@ -30,4 +31,8 @@ class Command(BaseCommand):
                 "total_amount": str(invoice.total_amount),
                 "due_date": str(invoice.due_date),
             })
+            notify(
+                invoice.user, "invoice_overdue", f"Invoice {invoice.invoice_number} is now overdue.",
+                link_path=f"/invoices/{invoice.id}",
+            )
         self.stdout.write(self.style.SUCCESS(f"Marked {len(due_invoices)} invoice(s) as overdue."))

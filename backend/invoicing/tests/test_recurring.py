@@ -61,6 +61,13 @@ class GenerateDueInvoicesTests(TestCase):
         self.assertEqual(profile.next_run_date, date(2026, 7, 1))
         self.assertEqual(profile.last_generated_invoice_id, invoice.id)
 
+        from notifications.models import Notification
+        self.assertTrue(
+            Notification.objects.filter(
+                user=self.user, notification_type="recurring_invoice_generated"
+            ).exists()
+        )
+
     def test_not_yet_due_profile_is_skipped(self):
         self._make_profile(date(2026, 7, 1))
         created = generate_due_invoices(today=date(2026, 6, 1))

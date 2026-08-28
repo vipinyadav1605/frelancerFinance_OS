@@ -15,6 +15,31 @@ export interface BusinessProfile {
   state: string;
   invoice_prefix: string;
   lut_reference: string;
+  email_signoff: string;
+}
+
+export interface NotificationPreference {
+  payment_confirmation_emails: boolean;
+  webhook_failure_emails: boolean;
+}
+
+export interface OnboardingStatus {
+  has_business_profile: boolean;
+  has_client: boolean;
+  has_invoice: boolean;
+  has_sent_invoice: boolean;
+}
+
+export type NotificationType =
+  | "invoice_overdue" | "invoice_paid" | "recurring_invoice_generated" | "webhook_failed";
+
+export interface AppNotification {
+  id: number;
+  notification_type: NotificationType;
+  message: string;
+  link_path: string;
+  is_read: boolean;
+  created_at: string;
 }
 
 export interface Client {

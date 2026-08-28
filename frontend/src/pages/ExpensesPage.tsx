@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from "react";
 import {
-  createExpense, createExpenseCategory, importBankStatementCsv, listExpenseCategories, listExpenses,
-  type ImportCsvResult,
+  createExpense, createExpenseCategory, deleteExpense, importBankStatementCsv, listExpenseCategories,
+  listExpenses, type ImportCsvResult,
 } from "../api/endpoints";
 import type { Expense, ExpenseCategory } from "../types";
 import { extractErrorMessage } from "../utils/errors";
@@ -41,6 +41,9 @@ export function ExpensesPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportCsvResult | null>(null);
 
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
   function loadCategories() {
     listExpenseCategories().then(setCategories);
   }
@@ -55,7 +58,32 @@ export function ExpensesPage() {
   }
 
   useEffect(loadCategories, []);
-  useEffect(loadExpenses, [categoryFilter, dateFrom, dateTo]);
+  useEffect(() => { setSelected(new Set()); loadExpenses(); }, [categoryFilter, dateFrom, dateTo]);
+
+  function toggleSelected(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelected((prev) => (prev.size === expenses.length ? new Set() : new Set(expenses.map((e) => e.id))));
+  }
+
+  async function handleBulkDelete() {
+    if (selected.size === 0) return;
+    if (!confirm(`Delete ${selected.size} expense(s)? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    try {
+      await Promise.all(Array.from(selected).map((id) => deleteExpense(id)));
+      setSelected(new Set());
+      loadExpenses();
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
 
   async function handleAddCategory() {
     if (!newCategoryName.trim()) return;
@@ -242,6 +270,15 @@ export function ExpensesPage() {
         <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="To date" />
       </div>
 
+      {selected.size > 0 && (
+        <div className="bulk-toolbar">
+          <span>{selected.size} selected</span>
+          <button className="btn btn-secondary" onClick={handleBulkDelete} disabled={bulkDeleting} style={{ color: "var(--red)", borderColor: "var(--red)" }}>
+            {bulkDeleting ? "Deleting..." : "Delete Selected"}
+          </button>
+        </div>
+      )}
+
       {loading ? (
         <div className="page-loading">Loading...</div>
       ) : expenses.length === 0 ? (
@@ -249,11 +286,15 @@ export function ExpensesPage() {
       ) : (
         <table className="data-table">
           <thead>
-            <tr><th>Date</th><th>Vendor</th><th>Category</th><th>Amount</th><th>GST Paid</th><th>Source</th></tr>
+            <tr>
+              <th><input type="checkbox" checked={selected.size === expenses.length} onChange={toggleSelectAll} /></th>
+              <th>Date</th><th>Vendor</th><th>Category</th><th>Amount</th><th>GST Paid</th><th>Source</th>
+            </tr>
           </thead>
           <tbody>
             {expenses.map((exp) => (
               <tr key={exp.id}>
+                <td><input type="checkbox" checked={selected.has(exp.id)} onChange={() => toggleSelected(exp.id)} /></td>
                 <td>{exp.expense_date}</td>
                 <td>{exp.vendor_name}</td>
                 <td>{exp.category_name}</td>

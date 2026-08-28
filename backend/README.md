@@ -104,6 +104,16 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
 | `/api/report-share-links/` | GET/POST | Phase 5: create an expiring read-only report link |
 | `/api/report-share-links/{id}/` | DELETE | Phase 5: revoke a share link |
 | `/api/shared/report/{token}/` | GET | Phase 5: public (no auth) read-only view of a shared report |
+| `/api/auth/change-password/` | POST | Settings > Security: `{"current_password", "new_password"}` |
+| `/api/auth/change-email/` | POST | Settings > Security: `{"new_email", "current_password"}` |
+| `/api/auth/delete-account/` | POST | Settings > Danger Zone: `{"current_password"}`, permanently deletes everything |
+| `/api/auth/notification-preference/` | GET/PUT | Settings > Notifications: toggle emailed notifications |
+| `/api/auth/onboarding-status/` | GET | drives the Dashboard's first-run setup checklist |
+| `/api/auth/data-export/` | GET | Settings > Danger Zone: zip of clients/invoices/expenses CSVs |
+| `/api/notifications/` | GET | in-app notification bell + activity history |
+| `/api/notifications/unread-count/` | GET | for the bell icon's badge |
+| `/api/notifications/{id}/mark-read/` | POST | mark one notification read |
+| `/api/notifications/mark-all-read/` | POST | mark all notifications read |
 
 ## Security
 
@@ -135,6 +145,30 @@ python manage.py generate_recurring_invoices # Phase 4: generate due recurring i
   `"test" in sys.argv`) - only affects `manage.py test`, never runtime. Real
   PBKDF2 hashing in every `create_user()`/login() call was costing minutes of
   test suite time for zero benefit against a throwaway test DB.
+
+## Settings, notifications & activity history
+
+- **Account deletion order matters**: `Client` and `ExpenseCategory` use
+  `on_delete=PROTECT` on their children (so a client/category can't be
+  silently deleted out from under historical invoices/expenses). Deleting a
+  user therefore deletes `Invoice`/`RecurringInvoiceProfile`/`Expense` first,
+  then the user (which cascades everything else) - see
+  `accounts/services/account_deletion.py`'s docstring. Don't call `user.delete()`
+  directly anywhere new without going through that service.
+- **In-app notifications double as the activity log** - "notifications" and
+  "audit log" were merged into one `notifications.Notification` model rather
+  than building two parallel systems: every notification IS a history entry
+  (read or not), and the bell icon just surfaces the unread ones. Fired on
+  invoice paid/overdue, recurring-invoice generation, and webhook failures.
+- **Emailed notifications are separately togglable** from in-app ones
+  (`accounts.models.NotificationPreference`) - in-app notifications always
+  fire; only the email side (payment confirmation, webhook failure alerts)
+  respects the user's Settings > Notifications preference.
+- **Customizable email sign-off** (`BusinessProfile.email_signoff`) is the
+  intentionally-scoped version of "customizable email templates" - a full
+  template engine with arbitrary variable interpolation would be a much
+  bigger feature than a solo freelancer's real need here (personalizing how
+  invoice emails sound to their clients).
 
 ## Known limitations (by design, for MVP)
 

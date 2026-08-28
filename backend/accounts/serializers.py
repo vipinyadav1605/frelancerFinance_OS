@@ -1,7 +1,7 @@
 from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
-from .models import BusinessProfile, User
+from .models import BusinessProfile, NotificationPreference, User
 from .validators import validate_gstin_format, validate_pan_format
 
 
@@ -46,7 +46,7 @@ class BusinessProfileSerializer(serializers.ModelSerializer):
         model = BusinessProfile
         fields = [
             "id", "business_name", "pan", "gstin", "is_gst_registered",
-            "address", "state", "invoice_prefix", "lut_reference",
+            "address", "state", "invoice_prefix", "lut_reference", "email_signoff",
             "created_at", "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
@@ -56,3 +56,50 @@ class BusinessProfileSerializer(serializers.ModelSerializer):
 
     def validate_pan(self, value):
         return validate_pan_format(value)
+
+
+class ChangeEmailSerializer(serializers.Serializer):
+    new_email = serializers.EmailField()
+    current_password = serializers.CharField(write_only=True)
+
+    def validate_new_email(self, value):
+        if User.objects.filter(email__iexact=value).exclude(pk=self.context["request"].user.pk).exists():
+            raise serializers.ValidationError("Another account already uses this email.")
+        return value
+
+    def validate_current_password(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+
+    def validate_current_password(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+
+class DeleteAccountSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+
+    def validate_current_password(self, value):
+        if not self.context["request"].user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+
+class NotificationPreferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NotificationPreference
+        fields = ["payment_confirmation_emails", "webhook_failure_emails"]
+
+
+class OnboardingStatusSerializer(serializers.Serializer):
+    has_business_profile = serializers.BooleanField()
+    has_client = serializers.BooleanField()
+    has_invoice = serializers.BooleanField()
+    has_sent_invoice = serializers.BooleanField()

@@ -39,8 +39,23 @@ class BusinessProfile(models.Model):
         max_length=100, blank=True,
         help_text="LUT ARN reference, required to mark export invoices as zero-rated.",
     )
+    email_signoff = models.CharField(
+        max_length=255, blank=True,
+        help_text="Replaces the default \"Thanks, {business_name}\" sign-off on invoice/reminder emails.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.business_name} ({self.user.email})"
+
+
+class NotificationPreference(models.Model):
+    """Per-user toggles for EMAILED notifications (in-app notifications are never gated by this)."""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="notification_preference")
+    payment_confirmation_emails = models.BooleanField(default=True)
+    webhook_failure_emails = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"NotificationPreference({self.user.email})"

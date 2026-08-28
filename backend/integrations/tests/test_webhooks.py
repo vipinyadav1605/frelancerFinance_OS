@@ -1,10 +1,12 @@
 from unittest.mock import Mock, patch
 
+from django.core import mail
 from django.test import TestCase
 
-from accounts.models import User
+from accounts.models import NotificationPreference, User
 from integrations.models import WebhookDelivery, WebhookSubscription
 from integrations.services.webhooks import send_webhook_event
+from notifications.models import Notification
 
 
 class SendWebhookEventTests(TestCase):
@@ -53,6 +55,23 @@ class SendWebhookEventTests(TestCase):
         delivery = WebhookDelivery.objects.get()
         self.assertFalse(delivery.success)
         self.assertIn("refused", delivery.error_message)
+
+        self.assertTrue(Notification.objects.filter(user=self.user, notification_type="webhook_failed").exists())
+        self.assertEqual(len(mail.outbox), 1)
+
+    @patch("integrations.services.webhooks.assert_safe_webhook_url")
+    @patch("integrations.services.webhooks.requests.post")
+    def test_failure_alert_email_is_skipped_when_preference_is_off(self, mock_post, mock_safe):
+        import requests
+        mock_post.side_effect = requests.ConnectionError("refused")
+        NotificationPreference.objects.filter(user=self.user).update(webhook_failure_emails=False)
+        WebhookSubscription.objects.create(
+            user=self.user, url="https://example.com/hook", event="invoice.paid", secret="s3cr3t",
+        )
+        send_webhook_event(self.user, "invoice.paid", {"invoice_number": "INV-1"})
+        self.assertEqual(len(mail.outbox), 0)
+        # In-app notification still fires even when the email alert is muted.
+        self.assertTrue(Notification.objects.filter(user=self.user, notification_type="webhook_failed").exists())
 
     @patch("integrations.services.webhooks.assert_safe_webhook_url")
     @patch("integrations.services.webhooks.requests.post")

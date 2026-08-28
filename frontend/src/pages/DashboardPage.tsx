@@ -3,6 +3,7 @@ import {
   createReportShareLink, deleteReportShareLink, downloadGstr1Export, downloadProfitLossExport,
   getGstr1Summary, getProfitLossReport, listReportShareLinks,
 } from "../api/endpoints";
+import { OnboardingChecklist } from "../components/OnboardingChecklist";
 import type { Gstr1Summary, ProfitLossReport, ReportShareLink } from "../types";
 import { extractErrorMessage } from "../utils/errors";
 
@@ -144,6 +145,8 @@ export function DashboardPage() {
           </button>
         </div>
       </div>
+
+      <OnboardingChecklist />
 
       <div className="filter-bar">
         <button className={`filter-chip ${preset === "month" ? "filter-chip-active" : ""}`} onClick={() => applyPreset("month")}>This Month</button>

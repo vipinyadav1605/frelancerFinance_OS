@@ -7,7 +7,7 @@ import { extractErrorMessage } from "../utils/errors";
 
 const emptyForm = {
   business_name: "", pan: "", gstin: "", is_gst_registered: false,
-  address: "", state: "", invoice_prefix: "INV", lut_reference: "",
+  address: "", state: "", invoice_prefix: "INV", lut_reference: "", email_signoff: "",
 };
 
 export function BusinessProfilePage() {
@@ -100,6 +100,11 @@ export function BusinessProfilePage() {
         <label>LUT reference (ARN)
           <input value={form.lut_reference} onChange={(e) => update("lut_reference", e.target.value)}
                  placeholder="Required only for export/international invoices" />
+        </label>
+
+        <label>Invoice email sign-off (optional)
+          <textarea value={form.email_signoff} onChange={(e) => update("email_signoff", e.target.value)} rows={2}
+                    placeholder={`Defaults to "Thanks,\\n${form.business_name || "Your Business Name"}"`} />
         </label>
 
         <button className="btn btn-primary" type="submit" disabled={saving}>

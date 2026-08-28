@@ -14,6 +14,9 @@ import json
 import logging
 
 import requests
+from django.core.mail import EmailMessage
+
+from notifications.services import notify
 
 from .. import models
 from .url_safety import UnsafeWebhookUrlError, assert_safe_webhook_url
@@ -25,6 +28,28 @@ TIMEOUT_SECONDS = 5
 
 def _sign(secret: str, body: bytes) -> str:
     return hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
+
+def _alert_on_failure(subscription, error_message: str):
+    notify(
+        subscription.user, "webhook_failed",
+        f"Webhook to {subscription.url} failed ({subscription.event}): {error_message}",
+        link_path="/integrations",
+    )
+
+    preference = getattr(subscription.user, "notification_preference", None)
+    if preference is not None and not preference.webhook_failure_emails:
+        return
+    EmailMessage(
+        subject="A webhook delivery failed",
+        body=(
+            f"Your webhook subscription for \"{subscription.event}\" to {subscription.url} "
+            f"just failed: {error_message}\n\n"
+            "Check recent deliveries on the Integrations page. Delivery is not automatically "
+            "retried, so you may want to fix the endpoint or re-check the URL."
+        ),
+        to=[subscription.user.email],
+    ).send(fail_silently=True)  # a broken email backend must not break webhook dispatch itself
 
 
 def send_webhook_event(user, event: str, payload: dict):
@@ -53,3 +78,6 @@ def send_webhook_event(user, event: str, payload: dict):
             delivery.error_message = str(exc)[:255]
             logger.warning("Webhook delivery failed for %s (%s): %s", subscription.url, event, exc)
         delivery.save()
+
+        if not delivery.success:
+            _alert_on_failure(subscription, delivery.error_message)

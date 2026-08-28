@@ -10,6 +10,7 @@ from accounts.models import BusinessProfile, User
 from clients.models import Client
 from integrations.models import WebhookDelivery, WebhookSubscription
 from invoicing.models import Invoice, InvoiceStatus, TaxType
+from notifications.models import Notification
 
 
 class InvoiceLifecycleWebhookTests(TestCase):
@@ -41,6 +42,10 @@ class InvoiceLifecycleWebhookTests(TestCase):
         self.assertEqual(args[0], self.user)
         self.assertEqual(args[1], "invoice.paid")
 
+        self.assertTrue(
+            Notification.objects.filter(user=self.user, notification_type="invoice_paid").exists()
+        )
+
     @patch("integrations.services.webhooks.assert_safe_webhook_url")
     @patch("requests.post")
     def test_update_overdue_invoices_fires_invoice_overdue_webhook(self, mock_post, mock_safe):
@@ -59,3 +64,7 @@ class InvoiceLifecycleWebhookTests(TestCase):
         delivery = WebhookDelivery.objects.filter(event="invoice.overdue").first()
         self.assertIsNotNone(delivery)
         self.assertTrue(delivery.success)
+
+        self.assertTrue(
+            Notification.objects.filter(user=self.user, notification_type="invoice_overdue").exists()
+        )

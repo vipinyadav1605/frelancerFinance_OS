@@ -6,6 +6,12 @@ from django.utils import timezone
 from .pdf import generate_invoice_pdf
 
 
+def _signoff(invoice):
+    """Settings > Business lets a user override the default sign-off text."""
+    profile = invoice.user.business_profile
+    return profile.email_signoff or f"Thanks,\n{profile.business_name}"
+
+
 def send_invoice_email(invoice):
     subject = f"Invoice {invoice.invoice_number} from {invoice.user.business_profile.business_name}"
     body_lines = [
@@ -16,7 +22,7 @@ def send_invoice_email(invoice):
     ]
     if invoice.payment_link_url:
         body_lines += ["", f"You can pay securely here: {invoice.payment_link_url}"]
-    body_lines += ["", f"Thanks,\n{invoice.user.business_profile.business_name}"]
+    body_lines += ["", _signoff(invoice)]
 
     email = EmailMessage(
         subject=subject,
@@ -42,7 +48,7 @@ def send_overdue_reminder_email(invoice):
     ]
     if invoice.payment_link_url:
         body_lines += ["", f"You can pay securely here: {invoice.payment_link_url}"]
-    body_lines += ["", f"Thanks,\n{invoice.user.business_profile.business_name}"]
+    body_lines += ["", _signoff(invoice)]
 
     email = EmailMessage(
         subject=subject,
@@ -53,6 +59,11 @@ def send_overdue_reminder_email(invoice):
 
 
 def send_payment_confirmation_email(invoice):
+    """Togglable via Settings > Notifications (accounts.models.NotificationPreference)."""
+    preference = getattr(invoice.user, "notification_preference", None)
+    if preference is not None and not preference.payment_confirmation_emails:
+        return
+
     EmailMessage(
         subject=f"Payment received for invoice {invoice.invoice_number}",
         body=(
