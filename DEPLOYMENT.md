@@ -1,14 +1,14 @@
-# Deploying to Render
+# Deploying: backend on Render, frontend on Vercel
 
-Two services + one database, all on Render:
+- **Backend** — a Render Web Service (Python/Django + gunicorn)
+- **Database** — a Render managed Postgres instance
+- **Frontend** — a Vercel project (Vite build output)
 
-- **Backend** — a Web Service (Python/Django + gunicorn)
-- **Frontend** — a Static Site (Vite build output)
-- **Database** — a managed Postgres instance
-
-Render can't be driven from here (it needs your login), so this is a guide
-to follow in Render's dashboard. Everything on the repo side is already
-prepped — see "What's already done" below.
+Both dashboards need your login, so this is a guide to follow there.
+Everything on the repo side is already prepped — see "What's already done"
+below. Both repos are private, which is fine: Render and Vercel each connect
+via a GitHub App you install and scope to only the specific repo(s) you pick
+— nobody else gets read access, and nothing becomes public by deploying it.
 
 ## What's already done in this repo
 
@@ -18,17 +18,16 @@ prepped — see "What's already done" below.
 - `config/settings.py`: `SECURE_PROXY_SSL_HEADER` uncommented (Render's proxy
   sets `X-Forwarded-Proto`, confirming HTTPS was actually used) - this only
   activates when `DJANGO_DEBUG=False`.
-- `frontend/public/_redirects` — `/* /index.html 200`, so refreshing a
-  client-side route (e.g. `/dashboard`) doesn't 404 on a static host.
+- `frontend/vercel.json` — rewrites every path to `/index.html`, so
+  refreshing a client-side route (e.g. `/dashboard`) doesn't 404 on Vercel.
 - `gunicorn` was already in `requirements.txt` from earlier.
 
-**Before you start**: commit and push these files (`build.sh`, `_redirects`,
-the `settings.py`/`requirements.txt` changes) — Render builds from your
-GitHub repo, so nothing here takes effect until it's pushed.
+**Before you start**: commit and push these files — Render and Vercel both
+build from your GitHub repo, so nothing here takes effect until it's pushed.
 
 ```
-git add backend/build.sh backend/config/settings.py backend/requirements.txt frontend/public/_redirects
-git commit -m "Prep for Render deployment"
+git add backend/build.sh backend/config/settings.py backend/requirements.txt frontend/vercel.json
+git commit -m "Prep for Render + Vercel deployment"
 git push
 ```
 
@@ -80,13 +79,19 @@ git push
    database from Step 1.
 9. Once live, note the backend's URL: `https://<your-backend-name>.onrender.com`.
 
-## Step 3 — Create the frontend static site
+## Step 3 — Create the frontend project on Vercel
 
-1. Render dashboard → **New** → **Static Site** → same GitHub repo.
-2. **Root Directory**: `frontend`
-3. **Build Command**: `npm install && npm run build`
-4. **Publish Directory**: `dist`
-5. Environment variables:
+1. [vercel.com](https://vercel.com) → **Add New** → **Project** → **Import
+   Git Repository**. First time only: **Adjust GitHub App Permissions** →
+   grant access to **Only select repositories** → pick this repo. Vercel
+   never sees your other repos, and the repo stays private.
+2. **Root Directory**: `frontend` (click "Edit" next to Root Directory in
+   the import screen — Vercel needs this since the repo isn't frontend-only).
+3. **Framework Preset**: Vite (should auto-detect from `package.json`).
+4. Build/Output settings can stay at Vercel's Vite defaults
+   (`npm run build`, output `dist`).
+5. Environment Variables (still on the import screen, or later under
+   Settings → Environment Variables):
 
    | Key | Value |
    |---|---|
@@ -94,20 +99,24 @@ git push
    | `VITE_GOOGLE_CLIENT_ID` | leave blank unless configured |
    | `VITE_PRO_PLAN_PRICE_DISPLAY` | e.g. `₹299/month` |
    | `VITE_SENTRY_DSN` | optional |
-   | `NODE_VERSION` | `20` |
 
-6. Click **Create Static Site**. Once live, note its URL:
-   `https://<your-frontend-name>.onrender.com`.
+6. Click **Deploy**. Once live, note its URL: `https://<your-project>.vercel.app`.
 
 ## Step 4 — Wire the two together
 
-Go back to the **backend** service → Environment, and update:
+Go back to the **Render backend** service → Environment, and update:
 
-- `CORS_ALLOWED_ORIGINS` → `https://<your-frontend-name>.onrender.com`
-- `FRONTEND_BASE_URL` → `https://<your-frontend-name>.onrender.com`
+- `CORS_ALLOWED_ORIGINS` → `https://<your-project>.vercel.app`
+- `FRONTEND_BASE_URL` → `https://<your-project>.vercel.app`
 
 Save - this triggers an automatic redeploy of the backend. Once it's back
 up, the two services are fully connected.
+
+Note: every push to your default branch gets a new Vercel deployment, and
+Vercel also spins up a unique preview URL per branch/PR by default. Preview
+URLs won't be in `CORS_ALLOWED_ORIGINS`, so API calls from a preview deploy
+will fail CORS until you either add that URL too or disable preview
+deployments (Settings → Git) if you don't need them.
 
 ## Step 5 — Verify
 
@@ -139,10 +148,10 @@ up, the two services are fully connected.
   `django.core.mail.backends.smtp.EmailBackend` and set `EMAIL_HOST` /
   `EMAIL_HOST_USER` / `EMAIL_HOST_PASSWORD` using a free Brevo or Resend SMTP
   relay - see the walkthrough already in `backend/.env.example`.
-- **Custom domain**: Render supports free custom domains on both the Web
-  Service and Static Site (Settings → Custom Domains). Once added, update
-  `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, and `FRONTEND_BASE_URL` to
-  match.
+- **Custom domain**: both Render (Web Service → Settings → Custom Domains)
+  and Vercel (Project → Settings → Domains) support free custom domains.
+  Once added, update `DJANGO_ALLOWED_HOSTS`, `CORS_ALLOWED_ORIGINS`, and
+  `FRONTEND_BASE_URL` to match.
 - **Razorpay webhook URL**: once live, set the webhook URL in the Razorpay
   Dashboard to `https://<your-backend-name>.onrender.com/api/webhooks/razorpay/`.
 - **Superuser / Django admin**: Render's paid plans include a web Shell tab
