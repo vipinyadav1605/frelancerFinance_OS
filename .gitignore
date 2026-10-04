@@ -1,3 +1,8 @@
 # Zyricon_web is a separate project (Zyricon Private Limited's company
 # website) with its own independent git repo - never track it from here.
 Zyricon_web/
+
+# Local Python virtual environments - never commit these
+fvenv/
+venv/
+.venv/
